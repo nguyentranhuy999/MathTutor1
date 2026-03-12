@@ -1,7 +1,7 @@
 """
 Main Demo Script - End-to-End Tutoring Pipeline with Real LLM.
 
-Requires HF_TOKEN environment variable.
+Requires OPENROUTER_API_KEY environment variable.
 Usage: python main.py
 """
 import os

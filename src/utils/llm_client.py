@@ -45,7 +45,11 @@ def openrouter_llm_adapter(prompt: str) -> str:
         result = response.json()
         content = result["choices"][0]["message"]["content"]
         return content.strip()
-        
     except Exception as exc:
         logger.error(f"OpenRouter API call failed: {exc}")
         return f"Error calling LLM: {exc}"
+
+
+# Backward-compatible alias used across pipeline.
+def hf_llm_adapter(prompt: str) -> str:
+    return openrouter_llm_adapter(prompt)

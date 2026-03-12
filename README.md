@@ -19,9 +19,10 @@ A solver-grounded math tutoring system for multi-step word problems (GSM8K-style
     ```bash
     pip install -r requirements.txt
     ```
-3.  Set your Hugging Face Token in a `.env` file:
+3.  Set your OpenRouter key in a `.env` file:
     ```text
-    HF_TOKEN=hf_your_token_here
+    OPENROUTER_API_KEY=your_openrouter_key
+    OPENROUTER_MODEL=qwen/qwen2.5-7b-instruct
     ```
 
 ## 🖥️ Usage
