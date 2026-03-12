@@ -32,11 +32,16 @@ def parse_gsm8k_answer(answer_text: str) -> Tuple[Optional[float], bool]:
         return None, False
 
 <<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> origin/main
     # 1) Strict GSM8K format
     hash_match = re.search(r"####\s*(.+)$", answer_text, re.MULTILINE)
     if hash_match:
         value = _to_float(hash_match.group(1))
         return (value, True) if value is not None else (None, False)
+<<<<<<< HEAD
+=======
 =======
     # 1) Strict GSM8K format (allowing noise like $)
     hash_match = re.search(r"####\s*(.*?)$", answer_text, re.MULTILINE)
@@ -46,6 +51,7 @@ def parse_gsm8k_answer(answer_text: str) -> Tuple[Optional[float], bool]:
         if nums:
             value = _to_float(nums[-1])
             return (value, True) if value is not None else (None, False)
+>>>>>>> origin/main
 >>>>>>> origin/main
 
     # 2) Common LLM answer cues

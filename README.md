@@ -9,7 +9,7 @@ A solver-grounded math tutoring system for multi-step word problems (GSM8K-style
 - **Symbolic Verifier (Phase 2):** Builds lightweight symbolic state + verification flags before diagnosis.
 - **Diagnosis Engine:** Classifies student errors (Arithmetic, Relation, Target Misunderstanding, etc.) with symbolic evidence fusion.
 - **Pedagogical Hinting:** Generates conceptual, relational, or next-step hints.
-- **Non-Spoiler Verification:** Automated check to ensure hints do not reveal the final answer.
+- **Hint Verification (Phase 2):** Automated spoiler + pedagogical alignment checks for generated hints.
 - **Fallback System:** Reliable Vietnamese hints if the generative pipeline fails.
 
 ## 🛠️ Installation
