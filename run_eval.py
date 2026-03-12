@@ -13,9 +13,13 @@ from src.diagnosis.engine import diagnose
 from src.hint.controller import HintController
 from src.models import SolverResponse, SolverStatus, DiagnosisLabel
 from src.solver.reference_parser import parse_solver_response, ParseStatus
+<<<<<<< HEAD
 from src.utils.llm_client import hf_llm_adapter
 from src.verification.symbolic_state_builder import build_symbolic_state
 from src.verification.symbolic_verifier import verify_symbolic_consistency
+=======
+from src.utils.llm_client import openrouter_llm_adapter
+>>>>>>> origin/main
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -29,16 +33,25 @@ def evaluate(split: str, limit: int) -> None:
     reference_correct = 0
     spoiler_free = 0
     diagnosis_counter: Counter[str] = Counter()
+<<<<<<< HEAD
     verification_counter: Counter[str] = Counter()
 
     hint_controller = HintController(llm_callable=hf_llm_adapter)
+=======
+
+    hint_controller = HintController(llm_callable=openrouter_llm_adapter)
+>>>>>>> origin/main
 
     for idx, rec in enumerate(records, start=1):
         solve_prompt = (
             "Solve this math problem step by step and end with '#### <answer>'.\n\n"
             f"Problem: {rec.problem}"
         )
+<<<<<<< HEAD
         raw_solve = hf_llm_adapter(solve_prompt)
+=======
+        raw_solve = openrouter_llm_adapter(solve_prompt)
+>>>>>>> origin/main
 
         solver_response = SolverResponse(
             raw_text=raw_solve,
@@ -52,6 +65,10 @@ def evaluate(split: str, limit: int) -> None:
         if parse_result.status != ParseStatus.SUCCESS or parse_result.reference is None:
             diagnosis_counter[DiagnosisLabel.UNKNOWN_ERROR.value] += 1
             logger.warning("[%d/%d] parse failed: %s", idx, len(records), parse_result.status.value)
+<<<<<<< HEAD
+=======
+            logger.warning("RAW OUTPUT:\n%s\n---", raw_solve)
+>>>>>>> origin/main
             continue
 
         parse_success += 1
@@ -62,20 +79,27 @@ def evaluate(split: str, limit: int) -> None:
         # Synthetic student answer to exercise diagnosis + hint pipeline
         student_answer = f"I think the answer is {ref_sol.final_answer - 1}."
         check_res = check_answer(student_answer, ref_sol.final_answer)
+<<<<<<< HEAD
 
         symbolic_state = build_symbolic_state(rec.problem, ref_sol.solution_text)
         verification_result = verify_symbolic_consistency(symbolic_state, check_res)
         verification_counter[verification_result.status.value] += 1
 
+=======
+>>>>>>> origin/main
         diag_res = diagnose(
             problem_text=rec.problem,
             reference_solution_text=ref_sol.solution_text,
             reference_answer=ref_sol.final_answer,
             student_raw=student_answer,
             check_result=check_res,
+<<<<<<< HEAD
             llm_callable=hf_llm_adapter,
             symbolic_state=symbolic_state,
             verification_result=verification_result,
+=======
+            llm_callable=openrouter_llm_adapter,
+>>>>>>> origin/main
         )
         diagnosis_counter[diag_res.label.value] += 1
 
@@ -100,10 +124,13 @@ def evaluate(split: str, limit: int) -> None:
         f"{reference_correct}/{parse_success} ({(reference_correct/parse_success*100) if parse_success else 0:.2f}%)"
     )
     print(f"Spoiler-free rate: {spoiler_free}/{total} ({(spoiler_free/total*100) if total else 0:.2f}%)")
+<<<<<<< HEAD
     print("Verification status distribution:")
     for status, count in verification_counter.most_common():
         print(f"  - {status}: {count}")
 
+=======
+>>>>>>> origin/main
     print("Diagnosis label distribution:")
     for label, count in diagnosis_counter.most_common():
         print(f"  - {label}: {count}")
@@ -112,7 +139,11 @@ def evaluate(split: str, limit: int) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run baseline evaluation on GSM8K")
     parser.add_argument("--split", default="test", choices=["train", "test"])
+<<<<<<< HEAD
     parser.add_argument("--limit", type=int, default=50)
+=======
+    parser.add_argument("--limit", type=int, default=10)
+>>>>>>> origin/main
     args = parser.parse_args()
     evaluate(split=args.split, limit=args.limit)
 
