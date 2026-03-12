@@ -6,7 +6,8 @@ A solver-grounded math tutoring system for multi-step word problems (GSM8K-style
 
 - **Reference Solver + Parser:** Generates step-by-step solutions via Qwen2.5-Math and parses `#### <answer>` into structured `ReferenceSolution`.
 - **Answer Checker:** Robust normalization and comparison of student and reference answers.
-- **Diagnosis Engine:** Classifies student errors (Arithmetic, Relation, Target Misunderstanding, etc.).
+- **Symbolic Verifier (Phase 2):** Builds lightweight symbolic state + verification flags before diagnosis.
+- **Diagnosis Engine:** Classifies student errors (Arithmetic, Relation, Target Misunderstanding, etc.) with symbolic evidence fusion.
 - **Pedagogical Hinting:** Generates conceptual, relational, or next-step hints.
 - **Non-Spoiler Verification:** Automated check to ensure hints do not reveal the final answer.
 - **Fallback System:** Reliable Vietnamese hints if the generative pipeline fails.
