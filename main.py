@@ -19,21 +19,21 @@ from src.solver.reference_parser import parse_solver_response, ParseStatus
 from src.checker.answer_checker import check_answer
 from src.diagnosis.engine import diagnose
 from src.hint.controller import HintController
-from src.utils.llm_client import hf_llm_adapter
+from src.utils.llm_client import openrouter_llm_adapter
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 def run_tutor_demo():
     # 0. Check for API Token
-    if "HF_TOKEN" not in os.environ:
-        print("ERROR: Please set the HF_TOKEN environment variable.")
-        print("Example (Windows PowerShell): $env:HF_TOKEN='your_token_here'")
+    if "OPENROUTER_API_KEY" not in os.environ:
+        print("ERROR: Please set the OPENROUTER_API_KEY environment variable.")
+        print("Example (Windows PowerShell): $env:OPENROUTER_API_KEY='your_token_here'")
         return
 
     # 1. Input Problem (GSM8K Style)
     problem_text = "Jan has 3 apples. She buys 5 more apples. How many apples does Jan have now?"
-    student_answer_raw = "She has 6 apples." # Wrong answer for demo
+    student_answer_raw = "She has 2 apples." # Wrong answer for demo
     
     print(f"--- PROBLEM ---\n{problem_text}")
     print(f"--- STUDENT ANSWER ---\n{student_answer_raw}\n")
@@ -41,13 +41,13 @@ def run_tutor_demo():
     # 2. Reference Solution (Using real LLM + parser)
     print("Step 1: Generating Reference Solution...")
     solve_prompt = f"Solve this math problem and provide the numeric answer at the end preceded by '#### '.\n\nProblem: {problem_text}"
-    raw_solve = hf_llm_adapter(solve_prompt)
+    raw_solve = openrouter_llm_adapter(solve_prompt)
 
     solver_response = SolverResponse(
         raw_text=raw_solve,
         status=SolverStatus.SUCCESS,
-        model_name="Qwen/Qwen2.5-Math-7B-Instruct",
-        latency_ms=0.0,
+        model_name="Qwen/Qwen2.5-7B-Instruct",
+        latency_ms=5000.0,
         attempt_count=1,
     )
     parse_result = parse_solver_response(solver_response)
@@ -82,7 +82,7 @@ def run_tutor_demo():
         reference_answer=ref_sol.final_answer,
         student_raw=student_answer_raw,
         check_result=check_res,
-        llm_callable=hf_llm_adapter
+        llm_callable=openrouter_llm_adapter
     )
     print(f"Error Label: {diag_res.label.value}")
     print(f"Explanation: {diag_res.explanation}\n")
@@ -90,7 +90,7 @@ def run_tutor_demo():
     # 5. Hint Generation (Using real LLM)
     print("Step 4: Generating Pedagogical Hint...")
     # HintController coordinates generation, verification, and fallback
-    hint_controller = HintController(llm_callable=hf_llm_adapter)
+    hint_controller = HintController(llm_callable=openrouter_llm_adapter)
     hint_res = hint_controller.get_hint(
         problem_text=problem_text,
         reference_solution_text=ref_sol.solution_text,

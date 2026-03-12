@@ -13,7 +13,7 @@ from src.diagnosis.engine import diagnose
 from src.hint.controller import HintController
 from src.models import SolverResponse, SolverStatus, DiagnosisLabel
 from src.solver.reference_parser import parse_solver_response, ParseStatus
-from src.utils.llm_client import hf_llm_adapter
+from src.utils.llm_client import openrouter_llm_adapter
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -28,14 +28,14 @@ def evaluate(split: str, limit: int) -> None:
     spoiler_free = 0
     diagnosis_counter: Counter[str] = Counter()
 
-    hint_controller = HintController(llm_callable=hf_llm_adapter)
+    hint_controller = HintController(llm_callable=openrouter_llm_adapter)
 
     for idx, rec in enumerate(records, start=1):
         solve_prompt = (
             "Solve this math problem step by step and end with '#### <answer>'.\n\n"
             f"Problem: {rec.problem}"
         )
-        raw_solve = hf_llm_adapter(solve_prompt)
+        raw_solve = openrouter_llm_adapter(solve_prompt)
 
         solver_response = SolverResponse(
             raw_text=raw_solve,
@@ -66,7 +66,7 @@ def evaluate(split: str, limit: int) -> None:
             reference_answer=ref_sol.final_answer,
             student_raw=student_answer,
             check_result=check_res,
-            llm_callable=hf_llm_adapter,
+            llm_callable=openrouter_llm_adapter,
         )
         diagnosis_counter[diag_res.label.value] += 1
 
