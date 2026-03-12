@@ -1,25 +1,28 @@
 import os
 import logging
-from huggingface_hub import InferenceClient
+import requests
+import json
 from dotenv import load_dotenv
 
-load_dotenv() # Load HF_TOKEN from .env if present
+load_dotenv() # Load variables from .env if present
 
 logger = logging.getLogger(__name__)
 
-def hf_llm_adapter(prompt: str) -> str:
-    """Adapter for Hugging Face Inference API.
+def openrouter_llm_adapter(prompt: str) -> str:
+    """Adapter for OpenRouter API.
     
-    Uses HF_TOKEN from environment variables.
+    Uses OPENROUTER_API_KEY from environment variables.
     """
-    api_key = os.environ.get("HF_TOKEN")
+    api_key = os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
-        logger.error("HF_TOKEN not found in environment variables.")
-        return "Error: HF_TOKEN is missing."
+        logger.error("OPENROUTER_API_KEY not found in environment variables.")
+        return "Error: OPENROUTER_API_KEY is missing."
 
     try:
-        client = InferenceClient(api_key=api_key)
+        # User specified qwen/qwen-2.5-7b-instruct
+        model_id = os.environ.get("OPENROUTER_MODEL_ID", "qwen/qwen-2.5-7b-instruct")
         
+<<<<<<< HEAD
         # Using a model that is often available on free Serverless Inference
         model_id = os.environ.get("HF_MODEL_ID", "Qwen/Qwen2.5-Math-7B-Instruct")
         
@@ -30,11 +33,32 @@ def hf_llm_adapter(prompt: str) -> str:
             ],
             max_tokens=1024,
             temperature=0.1, # Low temperature for reasoning tasks
+=======
+        response = requests.post(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            data=json.dumps({
+                "model": model_id,
+                "messages": [
+                    {"role": "user", "content": prompt}
+                ],
+                "max_tokens": 1024,
+                "temperature": 0.1, # Low temperature for reasoning tasks
+            })
+>>>>>>> origin/main
         )
         
-        content = completion.choices[0].message.content
+        if response.status_code != 200:
+            logger.error(f"OpenRouter API call failed: {response.status_code} {response.text}")
+            return f"Error calling LLM: {response.text}"
+            
+        result = response.json()
+        content = result["choices"][0]["message"]["content"]
         return content.strip()
         
     except Exception as exc:
-        logger.error(f"HF Inference API call failed: {exc}")
+        logger.error(f"OpenRouter API call failed: {exc}")
         return f"Error calling LLM: {exc}"
