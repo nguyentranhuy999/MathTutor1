@@ -21,7 +21,7 @@ from src.diagnosis.engine import diagnose
 from src.verification.symbolic_state_builder import build_symbolic_state
 from src.verification.symbolic_verifier import verify_symbolic_consistency
 from src.hint.controller import HintController
-from src.utils.llm_client import hf_llm_adapter
+from src.utils.llm_client import openrouter_llm_adapter
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -30,7 +30,7 @@ def run_tutor_demo():
     # 0. Check for API Token
     if "OPENROUTER_API_KEY" not in os.environ:
         print("ERROR: Please set the OPENROUTER_API_KEY environment variable.")
-        print("Example (Windows PowerShell): $env:OPENROUTER_API_KEY='your_key_here'")
+        print("Example (Windows PowerShell): $env:OPENROUTER_API_KEY='your_token_here'")
         return
 
     # 1. Input Problem (GSM8K Style)
@@ -43,7 +43,7 @@ def run_tutor_demo():
     # 2. Reference Solution (Using real LLM + parser)
     print("Step 1: Generating Reference Solution...")
     solve_prompt = f"Solve this math problem and provide the numeric answer at the end preceded by '#### '.\n\nProblem: {problem_text}"
-    raw_solve = hf_llm_adapter(solve_prompt)
+    raw_solve = openrouter_llm_adapter(solve_prompt)
 
     solver_response = SolverResponse(
         raw_text=raw_solve,
@@ -89,7 +89,7 @@ def run_tutor_demo():
         reference_answer=ref_sol.final_answer,
         student_raw=student_answer_raw,
         check_result=check_res,
-        llm_callable=hf_llm_adapter,
+        llm_callable=openrouter_llm_adapter,
         symbolic_state=symbolic_state,
         verification_result=verification_result,
     )
@@ -99,7 +99,7 @@ def run_tutor_demo():
     # 6. Hint Generation (Using real LLM)
     print("Step 5: Generating Pedagogical Hint...")
     # HintController coordinates generation, verification, and fallback
-    hint_controller = HintController(llm_callable=hf_llm_adapter)
+    hint_controller = HintController(llm_callable=openrouter_llm_adapter)
     hint_res = hint_controller.get_hint(
         problem_text=problem_text,
         reference_solution_text=ref_sol.solution_text,

@@ -34,7 +34,7 @@ python main.py
 
 Run a small evaluation harness (recommended for research iterations):
 ```bash
-python run_eval.py --split test --limit 50 --audit-output artifacts/eval_audit.jsonl --calibration-bins 10 --ablation-no-symbolic
+python run_eval.py --split test --limit 50
 ```
 
 ## 🧪 Testing
@@ -56,17 +56,9 @@ pytest
 
 ### Model Configuration
 
-`src/utils/llm_client.py` now uses OpenRouter by default.
-You can configure model and endpoint with:
+`src/utils/llm_client.py` defaults to `Qwen/Qwen2.5-Math-7B-Instruct` to stay aligned with solver settings.
+You can override this with:
 
 ```bash
-export OPENROUTER_API_KEY="your_key"
-export OPENROUTER_MODEL="qwen/qwen2.5-7b-instruct"
-export OPENROUTER_BASE_URL="https://openrouter.ai/api/v1"
-```
-
-For labeled diagnosis evaluation, pass a labels file (`.json/.jsonl/.csv`) to `run_eval.py`:
-
-```bash
-python run_eval.py --split test --limit 50 --audit-labels data/diagnosis_labels.jsonl --audit-output artifacts/eval_audit.jsonl --calibration-bins 10 --ablation-no-symbolic
+export HF_MODEL_ID="Qwen/Qwen2.5-Math-7B-Instruct"
 ```
