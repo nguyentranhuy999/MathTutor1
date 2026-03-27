@@ -1,224 +1,90 @@
-import pytest
-from src.models import (
-    AnswerCheckResult, Correctness, DiagnosisLabel,
-    ErrorLocalization, DiagnosisResult,
-    OperationType, QuantityFact, SymbolicState,
-    VerificationResult, VerificationStatus,
-)
-from src.diagnosis.engine import (
-    diagnose,
-    diagnose_with_rules,
-    parse_diagnosis_response,
-    build_diagnosis_prompt,
-    diagnose_with_symbolic_evidence,
-)
+from src.diagnosis import diagnose
+from src.evidence import build_diagnosis_evidence
+from src.formalizer import formalize_problem, formalize_student_work
+from src.models import DiagnosisLabel, ErrorLocalization
+from src.runtime import solve_problem
 
 
-def _check(correctness: Correctness, student_val=None) -> AnswerCheckResult:
-    return AnswerCheckResult(
-        correctness=correctness,
-        comparison_type="exact",
-        student_value=student_val,
-        normalization_status="success" if student_val is not None else "failed",
-        reference_value=8.0,
+def _concert_context():
+    problem_text = (
+        "A concert ticket costs $40. Mr. Benson bought 12 tickets and received a 5% discount "
+        "for every ticket bought that exceeds 10. How much did Mr. Benson pay in all?"
     )
+    problem = formalize_problem(problem_text)
+    reference = solve_problem(problem_text)
+    return problem, reference
 
 
-class TestDiagnoseWithRules:
-    def test_correct_answer(self):
-        result = diagnose_with_rules(_check(Correctness.CORRECT, 8.0))
-        assert result.label == DiagnosisLabel.CORRECT_ANSWER
-        assert result.confidence == 1.0
+def test_diagnosis_marks_correct_answer():
+    problem_text = "Tom had 10 marbles and gave away 4. How many marbles are left?"
+    problem = formalize_problem(problem_text)
+    reference = solve_problem(problem_text)
+    student = formalize_student_work("Answer is 6.", problem=problem, reference=reference)
+    evidence = build_diagnosis_evidence(problem, reference, student)
 
-    def test_unparseable(self):
-        result = diagnose_with_rules(_check(Correctness.UNPARSEABLE))
-        assert result.label == DiagnosisLabel.UNPARSEABLE_ANSWER
+    result = diagnose(evidence)
 
-    def test_incorrect_returns_none(self):
-        result = diagnose_with_rules(_check(Correctness.INCORRECT, 10.0))
-        assert result is None
+    assert result.diagnosis_label == DiagnosisLabel.CORRECT_ANSWER
+    assert result.localization == ErrorLocalization.NONE
 
 
-class TestParseDiagnosisResponse:
-    def test_valid_json(self):
-        raw = '{"label": "arithmetic_error", "localization": "final_computation", "explanation": "wrong calc"}'
-        result = parse_diagnosis_response(raw)
-        assert result.label == DiagnosisLabel.ARITHMETIC_ERROR
-        assert result.localization == ErrorLocalization.FINAL_COMPUTATION
+def test_diagnosis_marks_unparseable_answer():
+    problem, reference = _concert_context()
+    student = formalize_student_work("I do not know.", problem=problem, reference=reference)
+    evidence = build_diagnosis_evidence(problem, reference, student)
 
-    def test_json_in_text(self):
-        raw = 'Here is my analysis:\n{"label": "quantity_relation_error", "localization": "intermediate_step", "explanation": "bad setup"}\nDone.'
-        result = parse_diagnosis_response(raw)
-        assert result.label == DiagnosisLabel.QUANTITY_RELATION_ERROR
+    result = diagnose(evidence)
 
-    def test_invalid_label_fallback(self):
-        raw = '{"label": "made_up_error", "localization": "final_computation", "explanation": "test"}'
-        result = parse_diagnosis_response(raw)
-        assert result.label == DiagnosisLabel.UNKNOWN_ERROR
-
-    def test_no_json_fallback(self):
-        raw = "I think the student made an arithmetic error"
-        result = parse_diagnosis_response(raw)
-        assert result.label == DiagnosisLabel.UNKNOWN_ERROR
-        assert result.fallback_used is True
-
-    def test_malformed_json_fallback(self):
-        raw = '{"label": "arithmetic_error", broken}'
-        result = parse_diagnosis_response(raw)
-        assert result.fallback_used is True
+    assert result.diagnosis_label == DiagnosisLabel.UNPARSEABLE_ANSWER
+    assert result.localization == ErrorLocalization.UNKNOWN
 
 
-class TestDiagnose:
-    def test_correct_no_llm_needed(self):
-        check = _check(Correctness.CORRECT, 8.0)
-        result = diagnose("Problem?", "Solution", 8.0, "8", check)
-        assert result.label == DiagnosisLabel.CORRECT_ANSWER
+def test_diagnosis_marks_intermediate_target_selection():
+    problem, reference = _concert_context()
+    student = formalize_student_work("12 - 10 = 2\nAnswer is 2.", problem=problem, reference=reference)
+    evidence = build_diagnosis_evidence(problem, reference, student)
 
-    def test_unparseable_no_llm_needed(self):
-        check = _check(Correctness.UNPARSEABLE)
-        result = diagnose("Problem?", "Solution", 8.0, "??", check)
-        assert result.label == DiagnosisLabel.UNPARSEABLE_ANSWER
+    result = diagnose(evidence)
 
-    def test_incorrect_no_llm_fallback(self):
-        check = _check(Correctness.INCORRECT, 10.0)
-        result = diagnose("Problem?", "Solution", 8.0, "10", check, llm_callable=None)
-        assert result.label == DiagnosisLabel.UNKNOWN_ERROR
-        assert result.fallback_used is True
-
-    def test_incorrect_with_llm(self):
-        def mock_llm(prompt):
-            return '{"label": "arithmetic_error", "localization": "final_computation", "explanation": "Student added wrong"}'
-
-        check = _check(Correctness.INCORRECT, 10.0)
-        result = diagnose("5+3=?", "5+3=8", 8.0, "10", check, llm_callable=mock_llm)
-        assert result.label == DiagnosisLabel.ARITHMETIC_ERROR
-
-    def test_llm_exception_fallback(self):
-        def broken_llm(prompt):
-            raise RuntimeError("API down")
-
-        check = _check(Correctness.INCORRECT, 10.0)
-        result = diagnose("Problem?", "Solution", 8.0, "10", check, llm_callable=broken_llm)
-        assert result.label == DiagnosisLabel.UNKNOWN_ERROR
-        assert result.fallback_used is True
-
-    def test_prompt_contains_context(self):
-        check = _check(Correctness.INCORRECT, 10.0)
-        prompt = build_diagnosis_prompt("What is 5+3?", "5+3=8", 8.0, "10", check)
-        assert "What is 5+3?" in prompt
-        assert "5+3=8" in prompt
-        assert "10" in prompt
+    assert result.diagnosis_label == DiagnosisLabel.TARGET_MISUNDERSTANDING
+    assert result.subtype == "selected_intermediate_quantity"
+    assert result.localization == ErrorLocalization.TARGET_SELECTION
 
 
-class TestDiagnoseWithSymbolicEvidence:
-    def test_conflict_maps_to_quantity_relation_error(self):
-        check = _check(Correctness.INCORRECT, 6.0)
-        state = SymbolicState(
-            quantities=[QuantityFact(surface_form="10", value=10.0), QuantityFact(surface_form="4", value=4.0)],
-            expected_operation=OperationType.ADDITIVE,
-            builder_confidence=0.8,
-        )
-        vr = VerificationResult(
-            status=VerificationStatus.CONFLICT,
-            predicted_label=DiagnosisLabel.QUANTITY_RELATION_ERROR,
-            localization_hint=ErrorLocalization.INTERMEDIATE_STEP,
-            confidence=0.92,
-            explanation="conflict",
-        )
-        result = diagnose_with_symbolic_evidence(check, state, vr)
-        assert result is not None
-        assert result.label == DiagnosisLabel.QUANTITY_RELATION_ERROR
+def test_diagnosis_marks_visible_problem_quantity_selection():
+    problem, reference = _concert_context()
+    student = formalize_student_work("Answer is 40.", problem=problem, reference=reference)
+    evidence = build_diagnosis_evidence(problem, reference, student)
 
-    def test_verified_maps_to_arithmetic_error(self):
-        check = _check(Correctness.INCORRECT, 15.0)
-        state = SymbolicState(
-            quantities=[QuantityFact(surface_form="10", value=10.0), QuantityFact(surface_form="4", value=4.0)],
-            expected_operation=OperationType.ADDITIVE,
-            builder_confidence=0.8,
-        )
-        vr = VerificationResult(
-            status=VerificationStatus.VERIFIED,
-            confidence=0.7,
-            explanation="consistent",
-        )
-        result = diagnose_with_symbolic_evidence(check, state, vr)
-        assert result is not None
-        assert result.label == DiagnosisLabel.ARITHMETIC_ERROR
+    result = diagnose(evidence)
 
-    def test_verified_does_not_overclaim_when_symbolic_reliability_is_weak(self):
-        check = _check(Correctness.INCORRECT, 15.0)
-        weak_state = SymbolicState(
-            quantities=[QuantityFact(surface_form="10", value=10.0)],
-            expected_operation=OperationType.UNKNOWN,
-            builder_confidence=0.2,
-        )
-        vr = VerificationResult(
-            status=VerificationStatus.VERIFIED,
-            confidence=0.65,
-            explanation="consistent",
-        )
-        result = diagnose_with_symbolic_evidence(check, weak_state, vr)
-        assert result is None
-
-    def test_strong_conflict_can_still_pass_guardrail_with_weak_builder(self):
-        check = _check(Correctness.INCORRECT, 5.0)
-        weak_state = SymbolicState(
-            quantities=[QuantityFact(surface_form="20", value=20.0), QuantityFact(surface_form="5", value=5.0)],
-            expected_operation=OperationType.UNKNOWN,
-            builder_confidence=0.2,
-        )
-        vr = VerificationResult(
-            status=VerificationStatus.CONFLICT,
-            predicted_label=DiagnosisLabel.TARGET_MISUNDERSTANDING,
-            localization_hint=ErrorLocalization.TARGET_SELECTION,
-            confidence=0.82,
-            explanation="student matches visible quantity",
-        )
-        result = diagnose_with_symbolic_evidence(check, weak_state, vr)
-        assert result is not None
-        assert result.label == DiagnosisLabel.TARGET_MISUNDERSTANDING
-
-    def test_near_miss_arithmetic_can_pass_guardrail_with_weaker_symbolic_state(self):
-        check = AnswerCheckResult(
-            correctness=Correctness.INCORRECT,
-            comparison_type="exact",
-            student_value=77.0,
-            normalization_status="success",
-            reference_value=70.0,
-        )
-        weak_state = SymbolicState(
-            quantities=[QuantityFact(surface_form="40", value=40.0), QuantityFact(surface_form="10", value=10.0)],
-            expected_operation=OperationType.UNKNOWN,
-            builder_confidence=0.25,
-        )
-        vr = VerificationResult(
-            status=VerificationStatus.VERIFIED,
-            confidence=0.65,
-            explanation="consistent",
-        )
-        result = diagnose_with_symbolic_evidence(check, weak_state, vr)
-        assert result is not None
-        assert result.label == DiagnosisLabel.ARITHMETIC_ERROR
+    assert result.diagnosis_label == DiagnosisLabel.TARGET_MISUNDERSTANDING
+    assert result.subtype == "selected_visible_problem_quantity"
 
 
-class TestPromptWithSymbolicEvidence:
-    def test_prompt_contains_symbolic_section(self):
-        check = _check(Correctness.INCORRECT, 10.0)
-        vr = VerificationResult(
-            status=VerificationStatus.CONFLICT,
-            predicted_label=DiagnosisLabel.QUANTITY_RELATION_ERROR,
-            localization_hint=ErrorLocalization.INTERMEDIATE_STEP,
-            confidence=0.9,
-            evidence_flags=["flag_a"],
-            explanation="x",
-        )
-        prompt = build_diagnosis_prompt(
-            "What is 5+3?",
-            "5+3=8",
-            8.0,
-            "10",
-            check,
-            verification_result=vr,
-        )
-        assert "Symbolic Evidence" in prompt
-        assert "status=conflict" in prompt
+def test_diagnosis_marks_arithmetic_error():
+    problem_text = "Jan has 3 apples. She buys 5 more apples. How many apples does she have in total?"
+    problem = formalize_problem(problem_text)
+    reference = solve_problem(problem_text)
+    student = formalize_student_work("3 + 5 = 9\nAnswer is 9.", problem=problem, reference=reference)
+    evidence = build_diagnosis_evidence(problem, reference, student)
+
+    result = diagnose(evidence)
+
+    assert result.diagnosis_label == DiagnosisLabel.ARITHMETIC_ERROR
+    assert result.localization == ErrorLocalization.INTERMEDIATE_STEP
+
+
+def test_diagnosis_keeps_correct_answer_when_steps_are_reordered():
+    problem, reference = _concert_context()
+    student = formalize_student_work(
+        "12 * 40 = 480\n5% of 40 = 2\n2 * 2 = 4\n480 - 4 = 476\nAnswer is 476.",
+        problem=problem,
+        reference=reference,
+    )
+    evidence = build_diagnosis_evidence(problem, reference, student)
+
+    result = diagnose(evidence)
+
+    assert result.diagnosis_label == DiagnosisLabel.CORRECT_ANSWER
+    assert result.localization == ErrorLocalization.NONE

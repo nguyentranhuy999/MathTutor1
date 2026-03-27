@@ -1,185 +1,68 @@
-"""Hint verification utilities for spoiler and pedagogical alignment checks."""
-import logging
+"""Verification utilities for generated hints."""
+from __future__ import annotations
+
 import re
-from typing import Optional
 
-from src.models import DiagnosisLabel, ErrorLocalization, HintLevel
-
-logger = logging.getLogger(__name__)
+from src.models import HintPlan, TeacherMove
 
 
-def _normalize_hint_text(hint_text: str) -> str:
-    lowered = hint_text.lower()
-    lowered = re.sub(r"[^a-z0-9\s]", " ", lowered)
-    return re.sub(r"\s+", " ", lowered).strip()
+_NUMBER_PATTERN = re.compile(r"-?\d[\d,]*\.?\d*")
 
 
-def _contains_any(text: str, phrases: list[str]) -> bool:
-    return any(phrase in text for phrase in phrases)
+def _normalize(text: str) -> str:
+    lowered = text.lower()
+    lowered = re.sub(r"\s+", " ", lowered)
+    return lowered.strip()
 
 
-def verify_hint_no_spoiler(hint_text: str, reference_answer: float) -> bool:
-    """Verify that the hint text does not contain the final reference answer."""
-    if not hint_text:
-        return True
+def check_no_spoiler(hint_text: str, plan: HintPlan) -> list[str]:
+    """Return spoiler violations found in the hint text."""
+    violations: list[str] = []
+    normalized_hint = _normalize(hint_text)
+    hint_numbers = {match.replace(",", "") for match in _NUMBER_PATTERN.findall(hint_text)}
 
-    ref_str = str(reference_answer)
-    potential_matches = [ref_str]
-    if ref_str.endswith(".0"):
-        int_version = ref_str[:-2]
-        potential_matches.append(int_version)
-        if reference_answer >= 1000:
-            comma_version = "{:,}".format(int(reference_answer))
-            potential_matches.append(comma_version)
-
-    for match in potential_matches:
-        pattern = r"(?<![\d,.])" + re.escape(match) + r"(?![\d,.])"
-        if re.search(pattern, hint_text):
-            logger.warning("Spoiler detected in hint! Match: %s", match)
-            return False
-
-    found_numbers = re.findall(r"-?\d[\d,]*\.?\d*", hint_text)
-    for num_str in found_numbers:
-        try:
-            val = float(num_str.replace(",", ""))
-            if abs(val - reference_answer) < 1e-9:
-                logger.warning("Spoiler detected in hint! Numeric match: %f", val)
-                return False
-        except ValueError:
+    for hidden in plan.must_not_reveal:
+        normalized_hidden = _normalize(hidden)
+        if not normalized_hidden:
             continue
+        if _NUMBER_PATTERN.fullmatch(hidden.replace(",", "")):
+            if hidden.replace(",", "") in hint_numbers:
+                violations.append(f"reveals_hidden_number:{hidden}")
+            continue
+        if normalized_hidden in normalized_hint:
+            violations.append(f"reveals_hidden_text:{hidden}")
 
-    return True
+    return violations
 
 
-def verify_hint_alignment(
-    hint_text: str,
-    diagnosis_label: DiagnosisLabel,
-    expected_level: Optional[HintLevel] = None,
-    diagnosis_localization: Optional[ErrorLocalization] = None,
-) -> bool:
-    """Check whether hint content is pedagogically aligned with diagnosis/level."""
-    if not hint_text:
-        return False
+def check_alignment(hint_text: str, plan: HintPlan) -> list[str]:
+    """Return alignment violations for the generated hint."""
+    violations: list[str] = []
+    normalized_hint = _normalize(hint_text)
+    sentence_count = len([segment for segment in re.split(r"[.!?]+", hint_text) if segment.strip()])
 
-    normalized = _normalize_hint_text(hint_text)
-
-    label_keywords = {
-        DiagnosisLabel.ARITHMETIC_ERROR: [
-            "calculation",
-            "compute",
-            "arithmetic",
-            "check your math",
-            "recheck",
-            "work out",
-            "added",
-            "adding",
-            "subtracted",
-            "subtracting",
-            "multiplied",
-            "divided",
-            "count again",
-        ],
-        DiagnosisLabel.QUANTITY_RELATION_ERROR: [
-            "relationship",
-            "relate",
-            "between",
-            "add",
-            "subtract",
-            "combine",
-            "compare",
-            "difference",
-            "total",
-            "in all",
-            "left",
-            "remain",
-        ],
-        DiagnosisLabel.TARGET_MISUNDERSTANDING: [
-            "question",
-            "asked",
-            "asking",
-            "asks for",
-            "target",
-            "find",
-            "what value",
-            "which value",
-            "what quantity",
-            "which quantity",
-            "looking for",
-        ],
-        DiagnosisLabel.UNPARSEABLE_ANSWER: [
-            "rewrite",
-            "clear",
-            "clarify",
-            "format",
-            "explain",
-            "write your answer",
-            "typed",
-        ],
+    cue_map = {
+        TeacherMove.REFOCUS_TARGET: ("question", "asking", "quantity", "intermediate", "final"),
+        TeacherMove.CHECK_RELATIONSHIP: ("combine", "compare", "rate", "relationship", "step"),
+        TeacherMove.RECOMPUTE_STEP: ("recheck", "calculation", "carefully", "step"),
+        TeacherMove.CONTINUE_FROM_STEP: ("final", "step", "recompute", "setup"),
+        TeacherMove.RESTATE_RESULT: ("correct",),
+        TeacherMove.METACOGNITIVE_PROMPT: ("restate", "own words", "clear numeric answer"),
     }
 
-    if diagnosis_label in label_keywords:
-        if not _contains_any(normalized, label_keywords[diagnosis_label]):
-            logger.warning("Hint failed diagnosis-label alignment for %s", diagnosis_label.value)
-            return False
+    expected_cues = cue_map.get(plan.teacher_move, ())
+    if expected_cues and not any(cue in normalized_hint for cue in expected_cues):
+        violations.append("teacher_move_alignment_failed")
 
-    if diagnosis_localization == ErrorLocalization.TARGET_SELECTION:
-        target_tokens = ["question", "asks for", "what quantity", "which value", "looking for"]
-        if not _contains_any(normalized, target_tokens):
-            logger.warning("Hint failed target-selection alignment")
-            return False
+    if plan.hint_level.value == "conceptual" and "calculate" in normalized_hint and plan.disclosure_budget <= 1:
+        violations.append("conceptual_hint_too_computational")
 
-    if diagnosis_localization == ErrorLocalization.COMBINING_QUANTITIES:
-        relation_tokens = ["relationship", "combine", "compare", "add", "subtract", "total", "difference"]
-        if not _contains_any(normalized, relation_tokens):
-            logger.warning("Hint failed combining-quantities alignment")
-            return False
+    if sentence_count > 2:
+        violations.append("hint_too_long")
 
-    if diagnosis_localization == ErrorLocalization.FINAL_COMPUTATION:
-        computation_tokens = [
-            "calculate",
-            "calculation",
-            "recheck",
-            "check your math",
-            "count again",
-            "compute",
-            "adding",
-            "added",
-            "subtracting",
-            "subtracted",
-            "multiplying",
-            "dividing",
-            "last step",
-        ]
-        if not _contains_any(normalized, computation_tokens):
-            logger.warning("Hint failed final-computation alignment")
-            return False
+    return violations
 
-    if expected_level == HintLevel.RELATIONAL:
-        relational_tokens = ["relationship", "between", "add", "subtract", "compare", "combine", "difference"]
-        if not _contains_any(normalized, relational_tokens):
-            logger.warning("Hint failed relational-level alignment")
-            return False
 
-    if expected_level == HintLevel.NEXT_STEP:
-        action_tokens = [
-            "try",
-            "next",
-            "step",
-            "then",
-            "first",
-            "start by",
-            "begin by",
-            "go back",
-            "recheck",
-            "check",
-            "look at",
-        ]
-        starts_with_action = re.match(
-            r"^(try|first|next|then|start|begin|check|look|go back|recheck)\b",
-            normalized,
-        )
-        if not _contains_any(normalized, action_tokens) and not starts_with_action:
-            logger.warning("Hint failed next-step alignment")
-            return False
-
-    return True
+def verify_hint_text(hint_text: str, plan: HintPlan) -> list[str]:
+    """Return the combined verification violations for a hint."""
+    return check_no_spoiler(hint_text, plan) + check_alignment(hint_text, plan)

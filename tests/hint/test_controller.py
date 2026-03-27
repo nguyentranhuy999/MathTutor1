@@ -1,154 +1,112 @@
-﻿import pytest
-from src.models import (
-    HintLevel,
-    DiagnosisLabel,
-    DiagnosisResult,
-    ErrorLocalization,
-    VerificationResult,
-    VerificationStatus,
-)
-from src.hint.controller import HintController
+from src.diagnosis import diagnose
+from src.evidence import build_diagnosis_evidence
+from src.formalizer import formalize_problem, formalize_student_work
+from src.hint import build_hint_result, check_alignment, check_no_spoiler
+from src.models import DiagnosisLabel, HintLevel, HintPlan, TeacherMove
+from src.pedagogy import build_hint_plan
+from src.runtime import solve_problem
 
 
-def _diag(label: DiagnosisLabel, confidence: float = 0.9) -> DiagnosisResult:
-    return DiagnosisResult(
-        label=label,
-        localization=ErrorLocalization.FINAL_COMPUTATION,
-        explanation="test explanation",
-        confidence=confidence,
+def _concert_hint_context(student_answer: str):
+    problem_text = (
+        "A concert ticket costs $40. Mr. Benson bought 12 tickets and received a 5% discount "
+        "for every ticket bought that exceeds 10. How much did Mr. Benson pay in all?"
+    )
+    problem = formalize_problem(problem_text)
+    reference = solve_problem(problem_text)
+    student = formalize_student_work(student_answer, problem=problem, reference=reference)
+    evidence = build_diagnosis_evidence(problem, reference, student)
+    diagnosis = diagnose(evidence)
+    plan = build_hint_plan(problem, reference, diagnosis)
+    return problem, reference, diagnosis, plan
+
+
+def test_hint_controller_generates_verified_hint_for_target_misunderstanding():
+    problem, reference, diagnosis, plan = _concert_hint_context("12 - 10 = 2\nAnswer is 2.")
+
+    result = build_hint_result(problem, reference, diagnosis, plan)
+
+    assert diagnosis.diagnosis_label == DiagnosisLabel.TARGET_MISUNDERSTANDING
+    assert result.verification_passed is True
+    assert not result.violated_rules
+    assert "2" not in result.hint_text
+
+
+def test_hint_verifier_blocks_hidden_numbers():
+    _, _, _, plan = _concert_hint_context("12 - 10 = 2\nAnswer is 2.")
+
+    violations = check_no_spoiler("The value 2 is not your final answer.", plan)
+
+    assert any("reveals_hidden_number:2" == violation for violation in violations)
+
+
+def test_hint_verifier_checks_alignment():
+    _, _, _, plan = _concert_hint_context("12 - 10 = 2\nAnswer is 2.")
+
+    violations = check_alignment("Compute it again carefully.", plan)
+
+    assert "teacher_move_alignment_failed" in violations
+
+
+class _FakeHintLLMClient:
+    def __init__(self, responses):
+        self.responses = responses
+        self.calls = []
+
+    def generate_json(
+        self,
+        task_name,
+        system_prompt,
+        user_prompt,
+        temperature=0.0,
+        max_tokens=1200,
+    ):
+        self.calls.append(task_name)
+        return self.responses[task_name]
+
+
+def test_hint_controller_repairs_generated_hint_before_fallback():
+    problem, reference, diagnosis, plan = _concert_hint_context("12 - 10 = 2\nAnswer is 2.")
+    client = _FakeHintLLMClient(
+        {
+            "hint_generator": {
+                "hint_text": "The value 2 is not your final answer. Compute it again carefully."
+            }
+        }
     )
 
+    result = build_hint_result(problem, reference, diagnosis, plan, llm_client=client)
 
-class TestHintController:
-    def test_correct_answer_fast_path(self):
-        controller = HintController()
-        diag = _diag(DiagnosisLabel.CORRECT_ANSWER)
-        result = controller.get_hint("P", "S", 10.0, "10", diag)
+    assert result.verification_passed is True
+    assert "used_repaired_hint" in result.notes
+    assert "used_fallback_hint" not in result.notes
+    assert "2" not in result.hint_text
+    assert client.calls == ["hint_generator"]
 
-        assert "correct" in result.hint_text.lower()
-        assert result.fallback_used is False
-        assert result.generated_status == "success"
 
-    def test_successful_generation(self):
-        def mock_llm(prompt):
-            return '{"hint_text": "Try checking the addition calculation in the next step."}'
+def test_hint_controller_can_use_llm_repair_when_deterministic_repair_still_fails():
+    problem, reference, diagnosis, _ = _concert_hint_context("12 - 10 = 2\nAnswer is 2.")
+    plan = HintPlan(
+        diagnosis_label=diagnosis.diagnosis_label,
+        hint_level=HintLevel.CONCEPTUAL,
+        teacher_move=TeacherMove.REFOCUS_TARGET,
+        target_step_id=diagnosis.target_step_id,
+        disclosure_budget=1,
+        focus_points=["what quantity the question is actually asking for"],
+        must_not_reveal=["question", "quantity", "final", "intermediate"],
+        rationale="Synthetic plan to force the LLM repair path.",
+        confidence=0.8,
+    )
+    client = _FakeHintLLMClient(
+        {
+            "hint_generator": {"hint_text": "Question question question. Final intermediate quantity."},
+            "hint_repair": {"hint_text": "Focus on what the problem is asking you to find."},
+        }
+    )
 
-        controller = HintController(llm_callable=mock_llm)
-        diag = _diag(DiagnosisLabel.ARITHMETIC_ERROR)
-        result = controller.get_hint("5+5", "10", 10.0, "11", diag)
+    result = build_hint_result(problem, reference, diagnosis, plan, llm_client=client)
 
-        assert "calculation" in result.hint_text
-        assert result.fallback_used is False
-        assert result.generated_status == "success"
-
-    def test_spoiler_triggers_fallback(self):
-        def mock_llm_spoiler(prompt):
-            return '{"hint_text": "The answer is 10."}'
-
-        controller = HintController(llm_callable=mock_llm_spoiler, max_retries=0)
-        diag = _diag(DiagnosisLabel.ARITHMETIC_ERROR)
-        result = controller.get_hint("5+5", "10", 10.0, "11", diag)
-
-        assert result.fallback_used is True
-        assert "calculation" in result.hint_text.lower()
-
-    def test_alignment_failure_triggers_fallback(self):
-        def mock_llm_misaligned(prompt):
-            return '{"hint_text": "Read the question again to see what is being asked.", "hint_level": "next_step"}'
-
-        controller = HintController(llm_callable=mock_llm_misaligned, max_retries=0)
-        diag = _diag(DiagnosisLabel.ARITHMETIC_ERROR)
-        result = controller.get_hint("5+5", "10", 10.0, "11", diag)
-
-        assert result.fallback_used is True
-
-    def test_llm_failure_triggers_fallback(self):
-        def broken_llm(prompt):
-            raise RuntimeError("API Down")
-
-        controller = HintController(llm_callable=broken_llm, max_retries=0)
-        diag = _diag(DiagnosisLabel.TARGET_MISUNDERSTANDING)
-        result = controller.get_hint("P", "S", 10.0, "W", diag)
-
-        assert result.fallback_used is True
-        assert "question" in result.hint_text.lower()
-
-    def test_retry_then_success(self):
-        call_count = 0
-
-        def retry_mock(prompt):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return '{"hint_text": "The answer is 10."}'
-            return '{"hint_text": "Try adding again in the next step."}'
-
-        controller = HintController(llm_callable=retry_mock, max_retries=1)
-        diag = _diag(DiagnosisLabel.ARITHMETIC_ERROR)
-        result = controller.get_hint("5+5", "10", 10.0, "11", diag)
-
-        assert "adding again" in result.hint_text.lower()
-        assert result.fallback_used is False
-        assert call_count == 2
-
-    def test_conflict_verification_prefers_relational_level(self):
-        prompts = []
-
-        def mock_llm(prompt):
-            prompts.append(prompt)
-            return '{"hint_text": "Check the relationship between quantities before choosing add or subtract.", "hint_level": "relational"}'
-
-        controller = HintController(llm_callable=mock_llm, max_retries=0)
-        diag = DiagnosisResult(
-            label=DiagnosisLabel.QUANTITY_RELATION_ERROR,
-            localization=ErrorLocalization.COMBINING_QUANTITIES,
-            explanation="relation issue",
-            confidence=0.9,
-        )
-        vr = VerificationResult(
-            status=VerificationStatus.CONFLICT,
-            predicted_label=DiagnosisLabel.QUANTITY_RELATION_ERROR,
-            localization_hint=ErrorLocalization.COMBINING_QUANTITIES,
-            confidence=0.9,
-        )
-        result = controller.get_hint("P", "S", 10.0, "6", diag, verification_result=vr)
-
-        assert result.fallback_used is False
-        assert result.hint_level == HintLevel.RELATIONAL
-
-    def test_low_confidence_arithmetic_prefers_conceptual_level(self):
-        prompts = []
-
-        def mock_llm(prompt):
-            prompts.append(prompt)
-            return '{"hint_text": "Think about the overall idea of the calculation before doing the next step again.", "hint_level": "conceptual"}'
-
-        controller = HintController(llm_callable=mock_llm, max_retries=0)
-        diag = _diag(DiagnosisLabel.ARITHMETIC_ERROR, confidence=0.4)
-        result = controller.get_hint("P", "S", 10.0, "11", diag)
-
-        assert result.fallback_used is False
-        assert result.hint_level == HintLevel.CONCEPTUAL
-
-    def test_target_selection_prefers_conceptual_level(self):
-        def mock_llm(prompt):
-            return '{"hint_text": "Read the question again and focus on what value it is asking you to find.", "hint_level": "conceptual"}'
-
-        controller = HintController(llm_callable=mock_llm, max_retries=0)
-        diag = DiagnosisResult(
-            label=DiagnosisLabel.TARGET_MISUNDERSTANDING,
-            localization=ErrorLocalization.TARGET_SELECTION,
-            explanation="target selection issue",
-            confidence=0.85,
-        )
-        vr = VerificationResult(
-            status=VerificationStatus.CONFLICT,
-            predicted_label=DiagnosisLabel.TARGET_MISUNDERSTANDING,
-            localization_hint=ErrorLocalization.TARGET_SELECTION,
-            confidence=0.92,
-        )
-
-        result = controller.get_hint("P", "S", 10.0, "5", diag, verification_result=vr)
-
-        assert result.fallback_used is False
-        assert result.hint_level == HintLevel.CONCEPTUAL
+    assert result.verification_passed is True
+    assert "used_repaired_hint" in result.notes
+    assert "hint_repair:llm_rewrite" in result.notes
+    assert client.calls == ["hint_generator", "hint_repair"]

@@ -1,0 +1,1042 @@
+Student Work Debugger
+USE_LLM = True
+LLM client available = True
+
+==================== Input ====================
+{
+  "problem_text": "A deep-sea monster rises from the waters once every hundred years to feast on a ship and sate its hunger. Over three hundred years, it has consumed 847 people. Ships have been built larger over time, so each new ship has twice as many people as the last ship. How many people were on the ship the monster ate in the first hundred years?",
+  "student_answer": "Let the first ship have x people.Then the next two ships had 2x and 4x people.x + 2x + 4x = 847. 7x = 847. x = 847/7. x = 117.Answer is 117."
+}
+
+==================== Problem ====================
+{
+  "problem_text": "A deep-sea monster rises from the waters once every hundred years to feast on a ship and sate its hunger. Over three hundred years, it has consumed 847 people. Ships have been built larger over time, so each new ship has twice as many people as the last ship. How many people were on the ship the monster ate in the first hundred years?",
+  "quantities": [
+    {
+      "quantity_id": "quantity_1",
+      "surface_text": "847",
+      "value": 847.0,
+      "unit": "people ships",
+      "entity_id": null,
+      "semantic_role": "base",
+      "sentence_index": 1,
+      "char_start": 148,
+      "char_end": 151,
+      "is_target_candidate": false,
+      "provenance": "problem_text",
+      "notes": [
+        "context=d years, it has consumed 847 people. Ships have been built larg"
+      ]
+    }
+  ],
+  "entities": [],
+  "target": {
+    "surface_text": "How many people were on the ship the monster ate in the first hundred years?",
+    "normalized_question": "How many people were on the ship the monster ate in the first hundred years?",
+    "target_variable": "how_many_people_were_on_the_ship_the_monster_ate_in_the_first_hundred_years",
+    "target_quantity_id": "quantity_1",
+    "entity_id": null,
+    "unit": "people",
+    "description": "How many people were on the ship the monster ate in the first hundred years",
+    "provenance": "problem_text",
+    "confidence": 0.85
+  },
+  "relation_candidates": [
+    {
+      "relation_id": "relation_1",
+      "relation_type": "rate_unit_relation",
+      "operation_hint": "unknown",
+      "source_quantity_ids": [
+        "quantity_1"
+      ],
+      "target_variable": "how_many_people_were_on_the_ship_the_monster_ate_in_the_first_hundred_years",
+      "expression": "how_many_people_were_on_the_ship_the_monster_ate_in_the_first_hundred_years = rate_or_percent_relation(quantity_1)",
+      "rationale": "Heuristic relation candidate built from problem cues and extracted quantities.",
+      "confidence": 0.72,
+      "provenance": "heuristic"
+    }
+  ],
+  "problem_graph": {
+    "nodes": [
+      {
+        "node_id": "quantity_1",
+        "node_type": "quantity",
+        "label": "847",
+        "value": 847.0,
+        "unit": "people ships",
+        "quantity_id": "quantity_1",
+        "entity_id": null,
+        "target_variable": null,
+        "semantic_role": "base",
+        "operation": null,
+        "expression": null,
+        "step_id": null,
+        "step_index": null,
+        "confidence": 0.95,
+        "provenance": "problem_text",
+        "notes": [
+          "context=d years, it has consumed 847 people. Ships have been built larg"
+        ]
+      },
+      {
+        "node_id": "how_many_people_were_on_the_ship_the_monster_ate_in_the_first_hundred_years",
+        "node_type": "target",
+        "label": "How many people were on the ship the monster ate in the first hundred years?",
+        "value": null,
+        "unit": "people",
+        "quantity_id": null,
+        "entity_id": null,
+        "target_variable": "how_many_people_were_on_the_ship_the_monster_ate_in_the_first_hundred_years",
+        "semantic_role": null,
+        "operation": null,
+        "expression": null,
+        "step_id": null,
+        "step_index": null,
+        "confidence": 0.85,
+        "provenance": "problem_text",
+        "notes": []
+      }
+    ],
+    "edges": [],
+    "target_node_id": "how_many_people_were_on_the_ship_the_monster_ate_in_the_first_hundred_years",
+    "confidence": 0.75,
+    "provenance": "heuristic",
+    "notes": [
+      "graph_rate_relation_missing_components"
+    ]
+  },
+  "assumptions": [],
+  "confidence": 0.75,
+  "provenance": "heuristic",
+  "notes": [
+    "quantities_extracted=1",
+    "target_extracted",
+    "additive_cues=sum",
+    "subtractive_cues=over",
+    "multiplicative_cues=twice",
+    "rate_cues=each,every"
+  ]
+}
+
+==================== Reference ====================
+null
+
+==================== Reference Build Error ====================
+{
+  "error": "Unable to build canonical reference: Executable plan has no steps"
+}
+
+==================== Heuristic Student Work ====================
+{
+  "raw_answer": "Let the first ship have x people.Then the next two ships had 2x and 4x people.x + 2x + 4x = 847. 7x = 847. x = 847/7. x = 117.Answer is 117.",
+  "normalized_final_answer": 117.0,
+  "mode": "partial_trace",
+  "steps": [
+    {
+      "step_id": "student_step_1",
+      "raw_text": "Let the first ship have x people.Then the next two ships had 2x and 4x people.x + 2x + 4x = 847.",
+      "operation": "derive",
+      "input_values": [],
+      "extracted_value": 117.0,
+      "referenced_ids": [
+        "quantity_1"
+      ],
+      "confidence": 0.82,
+      "notes": [
+        "trace_provenance=heuristic",
+        "contains_equation",
+        "referenced_ids=1"
+      ]
+    },
+    {
+      "step_id": "student_step_2",
+      "raw_text": "7x = 847.",
+      "operation": "unknown",
+      "input_values": [],
+      "extracted_value": null,
+      "referenced_ids": [
+        "quantity_1"
+      ],
+      "confidence": 0.25,
+      "notes": [
+        "contains_equation",
+        "referenced_ids=1"
+      ]
+    },
+    {
+      "step_id": "student_step_3",
+      "raw_text": "x = 847/7.",
+      "operation": "unknown",
+      "input_values": [],
+      "extracted_value": null,
+      "referenced_ids": [
+        "quantity_1"
+      ],
+      "confidence": 0.25,
+      "notes": [
+        "contains_equation",
+        "referenced_ids=1"
+      ]
+    },
+    {
+      "step_id": "student_step_4",
+      "raw_text": "x = 117.Answer is 117.",
+      "operation": "unknown",
+      "input_values": [],
+      "extracted_value": null,
+      "referenced_ids": [],
+      "confidence": 0.25,
+      "notes": [
+        "contains_equation"
+      ]
+    }
+  ],
+  "student_graph": {
+    "nodes": [
+      {
+        "node_id": "quantity_1",
+        "node_type": "quantity",
+        "label": "847",
+        "value": 847.0,
+        "unit": "people ships",
+        "quantity_id": "quantity_1",
+        "entity_id": null,
+        "target_variable": null,
+        "semantic_role": "base",
+        "operation": null,
+        "expression": null,
+        "step_id": null,
+        "step_index": null,
+        "confidence": 0.95,
+        "provenance": "problem_text",
+        "notes": [
+          "context=d years, it has consumed 847 people. Ships have been built larg"
+        ]
+      },
+      {
+        "node_id": "student_op_student_step_1",
+        "node_type": "operation",
+        "label": "Let the first ship have x people.Then the next two ships had 2x and 4x people.x + 2x + 4x = 847.",
+        "value": null,
+        "unit": null,
+        "quantity_id": null,
+        "entity_id": null,
+        "target_variable": null,
+        "semantic_role": null,
+        "operation": "derive",
+        "expression": "Let the first ship have x people.Then the next two ships had 2x and 4x people.x + 2x + 4x = 847.",
+        "step_id": "student_step_1",
+        "step_index": 1,
+        "confidence": 0.82,
+        "provenance": "heuristic",
+        "notes": [
+          "trace_provenance=heuristic",
+          "contains_equation",
+          "referenced_ids=1"
+        ]
+      },
+      {
+        "node_id": "student_output_student_step_1",
+        "node_type": "intermediate",
+        "label": "student_output_student_step_1",
+        "value": 117.0,
+        "unit": null,
+        "quantity_id": null,
+        "entity_id": null,
+        "target_variable": null,
+        "semantic_role": "intermediate",
+        "operation": null,
+        "expression": null,
+        "step_id": null,
+        "step_index": null,
+        "confidence": 0.82,
+        "provenance": "heuristic",
+        "notes": [
+          "trace_provenance=heuristic",
+          "contains_equation",
+          "referenced_ids=1"
+        ]
+      },
+      {
+        "node_id": "student_op_student_step_2",
+        "node_type": "operation",
+        "label": "7x = 847.",
+        "value": null,
+        "unit": null,
+        "quantity_id": null,
+        "entity_id": null,
+        "target_variable": null,
+        "semantic_role": null,
+        "operation": "unknown",
+        "expression": "7x = 847.",
+        "step_id": "student_step_2",
+        "step_index": 2,
+        "confidence": 0.25,
+        "provenance": "heuristic",
+        "notes": [
+          "contains_equation",
+          "referenced_ids=1"
+        ]
+      },
+      {
+        "node_id": "student_op_student_step_3",
+        "node_type": "operation",
+        "label": "x = 847/7.",
+        "value": null,
+        "unit": null,
+        "quantity_id": null,
+        "entity_id": null,
+        "target_variable": null,
+        "semantic_role": null,
+        "operation": "unknown",
+        "expression": "x = 847/7.",
+        "step_id": "student_step_3",
+        "step_index": 3,
+        "confidence": 0.25,
+        "provenance": "heuristic",
+        "notes": [
+          "contains_equation",
+          "referenced_ids=1"
+        ]
+      },
+      {
+        "node_id": "student_op_student_step_4",
+        "node_type": "operation",
+        "label": "x = 117.Answer is 117.",
+        "value": null,
+        "unit": null,
+        "quantity_id": null,
+        "entity_id": null,
+        "target_variable": null,
+        "semantic_role": null,
+        "operation": "unknown",
+        "expression": "x = 117.Answer is 117.",
+        "step_id": "student_step_4",
+        "step_index": 4,
+        "confidence": 0.25,
+        "provenance": "heuristic",
+        "notes": [
+          "contains_equation"
+        ]
+      },
+      {
+        "node_id": "student_final_answer",
+        "node_type": "target",
+        "label": "student_final_answer",
+        "value": 117.0,
+        "unit": null,
+        "quantity_id": null,
+        "entity_id": null,
+        "target_variable": "student_final_answer",
+        "semantic_role": null,
+        "operation": null,
+        "expression": null,
+        "step_id": null,
+        "step_index": null,
+        "confidence": 0.8,
+        "provenance": "heuristic",
+        "notes": []
+      }
+    ],
+    "edges": [
+      {
+        "edge_id": "edge_quantity_1_to_student_op_student_step_1_0",
+        "source_node_id": "quantity_1",
+        "target_node_id": "student_op_student_step_1",
+        "edge_type": "input_to_operation",
+        "position": 0,
+        "confidence": 0.82,
+        "provenance": "heuristic",
+        "notes": []
+      },
+      {
+        "edge_id": "edge_student_op_student_step_1_to_student_output_student_step_1",
+        "source_node_id": "student_op_student_step_1",
+        "target_node_id": "student_output_student_step_1",
+        "edge_type": "output_from_operation",
+        "position": null,
+        "confidence": 0.82,
+        "provenance": "heuristic",
+        "notes": []
+      },
+      {
+        "edge_id": "edge_quantity_1_to_student_op_student_step_2_0",
+        "source_node_id": "quantity_1",
+        "target_node_id": "student_op_student_step_2",
+        "edge_type": "input_to_operation",
+        "position": 0,
+        "confidence": 0.25,
+        "provenance": "heuristic",
+        "notes": []
+      },
+      {
+        "edge_id": "edge_quantity_1_to_student_op_student_step_3_0",
+        "source_node_id": "quantity_1",
+        "target_node_id": "student_op_student_step_3",
+        "edge_type": "input_to_operation",
+        "position": 0,
+        "confidence": 0.25,
+        "provenance": "heuristic",
+        "notes": []
+      },
+      {
+        "edge_id": "edge_student_output_student_step_1_to_student_final_answer",
+        "source_node_id": "student_output_student_step_1",
+        "target_node_id": "student_final_answer",
+        "edge_type": "targets_value",
+        "position": null,
+        "confidence": 0.8,
+        "provenance": "heuristic",
+        "notes": [
+          "linked_from_last_student_step"
+        ]
+      }
+    ],
+    "target_node_id": "student_final_answer",
+    "confidence": 0.8,
+    "provenance": "heuristic",
+    "notes": [
+      "student_steps=4",
+      "student_graph_built"
+    ]
+  },
+  "selected_target_ref": null,
+  "assumptions": [],
+  "confidence": 0.8,
+  "notes": [
+    "answer_cue_match",
+    "student_trace_steps=1"
+  ]
+}
+
+==================== Final Student Work ====================
+{
+  "raw_answer": "Let the first ship have x people.Then the next two ships had 2x and 4x people.x + 2x + 4x = 847. 7x = 847. x = 847/7. x = 117.Answer is 117.",
+  "normalized_final_answer": 117.0,
+  "mode": "full_trace",
+  "steps": [
+    {
+      "step_id": "student_step_1",
+      "raw_text": "Let the first ship have x people.Then the next two ships had 2x and 4x people.x + 2x + 4x = 847.",
+      "operation": "derive",
+      "input_values": [
+        0.0
+      ],
+      "extracted_value": 117.0,
+      "referenced_ids": [
+        "quantity_1"
+      ],
+      "confidence": 0.8,
+      "notes": [
+        "Formed equation x + 2x + 4x = 847 from the setup."
+      ]
+    },
+    {
+      "step_id": "student_step_2",
+      "raw_text": "7x = 847.",
+      "operation": "unknown",
+      "input_values": [
+        0.0
+      ],
+      "extracted_value": null,
+      "referenced_ids": [
+        "quantity_1"
+      ],
+      "confidence": 0.6,
+      "notes": [
+        "State 7x = 847."
+      ]
+    },
+    {
+      "step_id": "student_step_3",
+      "raw_text": "x = 847/7.",
+      "operation": "unknown",
+      "input_values": [
+        0.0
+      ],
+      "extracted_value": null,
+      "referenced_ids": [
+        "quantity_1"
+      ],
+      "confidence": 0.6,
+      "notes": [
+        "State x = 847/7."
+      ]
+    },
+    {
+      "step_id": "student_step_4",
+      "raw_text": "x = 117.Answer is 117.",
+      "operation": "unknown",
+      "input_values": [
+        0.0
+      ],
+      "extracted_value": null,
+      "referenced_ids": [],
+      "confidence": 0.6,
+      "notes": [
+        "State x = 117. Answer is 117."
+      ]
+    }
+  ],
+  "student_graph": {
+    "nodes": [
+      {
+        "node_id": "quantity_1",
+        "node_type": "quantity",
+        "label": "847",
+        "value": 847.0,
+        "unit": "people ships",
+        "quantity_id": "quantity_1",
+        "entity_id": null,
+        "target_variable": null,
+        "semantic_role": "base",
+        "operation": null,
+        "expression": null,
+        "step_id": null,
+        "step_index": null,
+        "confidence": 0.95,
+        "provenance": "problem_text",
+        "notes": [
+          "context=d years, it has consumed 847 people. Ships have been built larg"
+        ]
+      },
+      {
+        "node_id": "student_op_student_step_1",
+        "node_type": "operation",
+        "label": "Let the first ship have x people.Then the next two ships had 2x and 4x people.x + 2x + 4x = 847.",
+        "value": null,
+        "unit": null,
+        "quantity_id": null,
+        "entity_id": null,
+        "target_variable": null,
+        "semantic_role": null,
+        "operation": "derive",
+        "expression": "Let the first ship have x people.Then the next two ships had 2x and 4x people.x + 2x + 4x = 847.",
+        "step_id": "student_step_1",
+        "step_index": 1,
+        "confidence": 0.8,
+        "provenance": "heuristic",
+        "notes": [
+          "Formed equation x + 2x + 4x = 847 from the setup."
+        ]
+      },
+      {
+        "node_id": "student_output_student_step_1",
+        "node_type": "intermediate",
+        "label": "student_output_student_step_1",
+        "value": 117.0,
+        "unit": null,
+        "quantity_id": null,
+        "entity_id": null,
+        "target_variable": null,
+        "semantic_role": "intermediate",
+        "operation": null,
+        "expression": null,
+        "step_id": null,
+        "step_index": null,
+        "confidence": 0.8,
+        "provenance": "heuristic",
+        "notes": [
+          "Formed equation x + 2x + 4x = 847 from the setup."
+        ]
+      },
+      {
+        "node_id": "student_op_student_step_2",
+        "node_type": "operation",
+        "label": "7x = 847.",
+        "value": null,
+        "unit": null,
+        "quantity_id": null,
+        "entity_id": null,
+        "target_variable": null,
+        "semantic_role": null,
+        "operation": "unknown",
+        "expression": "7x = 847.",
+        "step_id": "student_step_2",
+        "step_index": 2,
+        "confidence": 0.6,
+        "provenance": "heuristic",
+        "notes": [
+          "State 7x = 847."
+        ]
+      },
+      {
+        "node_id": "student_op_student_step_3",
+        "node_type": "operation",
+        "label": "x = 847/7.",
+        "value": null,
+        "unit": null,
+        "quantity_id": null,
+        "entity_id": null,
+        "target_variable": null,
+        "semantic_role": null,
+        "operation": "unknown",
+        "expression": "x = 847/7.",
+        "step_id": "student_step_3",
+        "step_index": 3,
+        "confidence": 0.6,
+        "provenance": "heuristic",
+        "notes": [
+          "State x = 847/7."
+        ]
+      },
+      {
+        "node_id": "student_op_student_step_4",
+        "node_type": "operation",
+        "label": "x = 117.Answer is 117.",
+        "value": null,
+        "unit": null,
+        "quantity_id": null,
+        "entity_id": null,
+        "target_variable": null,
+        "semantic_role": null,
+        "operation": "unknown",
+        "expression": "x = 117.Answer is 117.",
+        "step_id": "student_step_4",
+        "step_index": 4,
+        "confidence": 0.6,
+        "provenance": "heuristic",
+        "notes": [
+          "State x = 117. Answer is 117."
+        ]
+      },
+      {
+        "node_id": "student_final_answer",
+        "node_type": "target",
+        "label": "student_final_answer",
+        "value": 117.0,
+        "unit": null,
+        "quantity_id": null,
+        "entity_id": null,
+        "target_variable": "quantity_1",
+        "semantic_role": null,
+        "operation": null,
+        "expression": null,
+        "step_id": null,
+        "step_index": null,
+        "confidence": 0.4,
+        "provenance": "heuristic",
+        "notes": [
+          "selected_target_ref=quantity_1"
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "edge_id": "edge_quantity_1_to_student_op_student_step_1_0",
+        "source_node_id": "quantity_1",
+        "target_node_id": "student_op_student_step_1",
+        "edge_type": "input_to_operation",
+        "position": 0,
+        "confidence": 0.8,
+        "provenance": "heuristic",
+        "notes": []
+      },
+      {
+        "edge_id": "edge_student_op_student_step_1_to_student_output_student_step_1",
+        "source_node_id": "student_op_student_step_1",
+        "target_node_id": "student_output_student_step_1",
+        "edge_type": "output_from_operation",
+        "position": null,
+        "confidence": 0.8,
+        "provenance": "heuristic",
+        "notes": []
+      },
+      {
+        "edge_id": "edge_quantity_1_to_student_op_student_step_2_0",
+        "source_node_id": "quantity_1",
+        "target_node_id": "student_op_student_step_2",
+        "edge_type": "input_to_operation",
+        "position": 0,
+        "confidence": 0.6,
+        "provenance": "heuristic",
+        "notes": []
+      },
+      {
+        "edge_id": "edge_quantity_1_to_student_op_student_step_3_0",
+        "source_node_id": "quantity_1",
+        "target_node_id": "student_op_student_step_3",
+        "edge_type": "input_to_operation",
+        "position": 0,
+        "confidence": 0.6,
+        "provenance": "heuristic",
+        "notes": []
+      },
+      {
+        "edge_id": "edge_student_output_student_step_1_to_student_final_answer",
+        "source_node_id": "student_output_student_step_1",
+        "target_node_id": "student_final_answer",
+        "edge_type": "targets_value",
+        "position": null,
+        "confidence": 0.4,
+        "provenance": "heuristic",
+        "notes": [
+          "linked_from_last_student_step"
+        ]
+      }
+    ],
+    "target_node_id": "student_final_answer",
+    "confidence": 0.35,
+    "provenance": "heuristic",
+    "notes": [
+      "student_steps=4",
+      "student_graph_built",
+      "selected_target_ref=quantity_1"
+    ]
+  },
+  "selected_target_ref": "quantity_1",
+  "assumptions": [
+    "x represents the number of people on the first ship."
+  ],
+  "confidence": 0.0,
+  "notes": [
+    "answer_cue_match",
+    "student_trace_steps=1",
+    "Answer given as 117.",
+    "llm_student_parse_attempt:1",
+    "student_llm_diff:mode",
+    "student_llm_diff:selected_target_ref",
+    "llm_student_parse_used",
+    "llm_student_compact_skeleton_used"
+  ]
+}
+
+==================== Student Graph ====================
+{
+  "nodes": [
+    {
+      "node_id": "quantity_1",
+      "node_type": "quantity",
+      "label": "847",
+      "value": 847.0,
+      "unit": "people ships",
+      "quantity_id": "quantity_1",
+      "entity_id": null,
+      "target_variable": null,
+      "semantic_role": "base",
+      "operation": null,
+      "expression": null,
+      "step_id": null,
+      "step_index": null,
+      "confidence": 0.95,
+      "provenance": "problem_text",
+      "notes": [
+        "context=d years, it has consumed 847 people. Ships have been built larg"
+      ]
+    },
+    {
+      "node_id": "student_op_student_step_1",
+      "node_type": "operation",
+      "label": "Let the first ship have x people.Then the next two ships had 2x and 4x people.x + 2x + 4x = 847.",
+      "value": null,
+      "unit": null,
+      "quantity_id": null,
+      "entity_id": null,
+      "target_variable": null,
+      "semantic_role": null,
+      "operation": "derive",
+      "expression": "Let the first ship have x people.Then the next two ships had 2x and 4x people.x + 2x + 4x = 847.",
+      "step_id": "student_step_1",
+      "step_index": 1,
+      "confidence": 0.8,
+      "provenance": "heuristic",
+      "notes": [
+        "Formed equation x + 2x + 4x = 847 from the setup."
+      ]
+    },
+    {
+      "node_id": "student_output_student_step_1",
+      "node_type": "intermediate",
+      "label": "student_output_student_step_1",
+      "value": 117.0,
+      "unit": null,
+      "quantity_id": null,
+      "entity_id": null,
+      "target_variable": null,
+      "semantic_role": "intermediate",
+      "operation": null,
+      "expression": null,
+      "step_id": null,
+      "step_index": null,
+      "confidence": 0.8,
+      "provenance": "heuristic",
+      "notes": [
+        "Formed equation x + 2x + 4x = 847 from the setup."
+      ]
+    },
+    {
+      "node_id": "student_op_student_step_2",
+      "node_type": "operation",
+      "label": "7x = 847.",
+      "value": null,
+      "unit": null,
+      "quantity_id": null,
+      "entity_id": null,
+      "target_variable": null,
+      "semantic_role": null,
+      "operation": "unknown",
+      "expression": "7x = 847.",
+      "step_id": "student_step_2",
+      "step_index": 2,
+      "confidence": 0.6,
+      "provenance": "heuristic",
+      "notes": [
+        "State 7x = 847."
+      ]
+    },
+    {
+      "node_id": "student_op_student_step_3",
+      "node_type": "operation",
+      "label": "x = 847/7.",
+      "value": null,
+      "unit": null,
+      "quantity_id": null,
+      "entity_id": null,
+      "target_variable": null,
+      "semantic_role": null,
+      "operation": "unknown",
+      "expression": "x = 847/7.",
+      "step_id": "student_step_3",
+      "step_index": 3,
+      "confidence": 0.6,
+      "provenance": "heuristic",
+      "notes": [
+        "State x = 847/7."
+      ]
+    },
+    {
+      "node_id": "student_op_student_step_4",
+      "node_type": "operation",
+      "label": "x = 117.Answer is 117.",
+      "value": null,
+      "unit": null,
+      "quantity_id": null,
+      "entity_id": null,
+      "target_variable": null,
+      "semantic_role": null,
+      "operation": "unknown",
+      "expression": "x = 117.Answer is 117.",
+      "step_id": "student_step_4",
+      "step_index": 4,
+      "confidence": 0.6,
+      "provenance": "heuristic",
+      "notes": [
+        "State x = 117. Answer is 117."
+      ]
+    },
+    {
+      "node_id": "student_final_answer",
+      "node_type": "target",
+      "label": "student_final_answer",
+      "value": 117.0,
+      "unit": null,
+      "quantity_id": null,
+      "entity_id": null,
+      "target_variable": "quantity_1",
+      "semantic_role": null,
+      "operation": null,
+      "expression": null,
+      "step_id": null,
+      "step_index": null,
+      "confidence": 0.4,
+      "provenance": "heuristic",
+      "notes": [
+        "selected_target_ref=quantity_1"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "edge_quantity_1_to_student_op_student_step_1_0",
+      "source_node_id": "quantity_1",
+      "target_node_id": "student_op_student_step_1",
+      "edge_type": "input_to_operation",
+      "position": 0,
+      "confidence": 0.8,
+      "provenance": "heuristic",
+      "notes": []
+    },
+    {
+      "edge_id": "edge_student_op_student_step_1_to_student_output_student_step_1",
+      "source_node_id": "student_op_student_step_1",
+      "target_node_id": "student_output_student_step_1",
+      "edge_type": "output_from_operation",
+      "position": null,
+      "confidence": 0.8,
+      "provenance": "heuristic",
+      "notes": []
+    },
+    {
+      "edge_id": "edge_quantity_1_to_student_op_student_step_2_0",
+      "source_node_id": "quantity_1",
+      "target_node_id": "student_op_student_step_2",
+      "edge_type": "input_to_operation",
+      "position": 0,
+      "confidence": 0.6,
+      "provenance": "heuristic",
+      "notes": []
+    },
+    {
+      "edge_id": "edge_quantity_1_to_student_op_student_step_3_0",
+      "source_node_id": "quantity_1",
+      "target_node_id": "student_op_student_step_3",
+      "edge_type": "input_to_operation",
+      "position": 0,
+      "confidence": 0.6,
+      "provenance": "heuristic",
+      "notes": []
+    },
+    {
+      "edge_id": "edge_student_output_student_step_1_to_student_final_answer",
+      "source_node_id": "student_output_student_step_1",
+      "target_node_id": "student_final_answer",
+      "edge_type": "targets_value",
+      "position": null,
+      "confidence": 0.4,
+      "provenance": "heuristic",
+      "notes": [
+        "linked_from_last_student_step"
+      ]
+    }
+  ],
+  "target_node_id": "student_final_answer",
+  "confidence": 0.35,
+  "provenance": "heuristic",
+  "notes": [
+    "student_steps=4",
+    "student_graph_built",
+    "selected_target_ref=quantity_1"
+  ]
+}
+
+==================== LLM Attempts ====================
+
+Attempt 1
+Task: student_work_formalizer
+Status: success
+Feedback issues passed into this attempt:
+[]
+System prompt sent to model:
+You are a student-work formalizer for math tutoring. Return only a compact typed skeleton JSON object. Do not invent new steps. Do not rewrite the student's text. Keep everything strictly grounded in the student answer and the provided draft ids. Local code will build the final StudentWorkState and graph.
+User prompt sent to model:
+Student answer:
+Let the first ship have x people.Then the next two ships had 2x and 4x people.x + 2x + 4x = 847. 7x = 847. x = 847/7. x = 117.Answer is 117.
+
+Return one JSON object with only these top-level fields:
+{
+  "normalized_final_answer": 0.0,
+  "mode": "final_answer_only|partial_trace|full_trace|unparseable",
+  "selected_target_ref": "...",
+  "step_updates": [
+    {"step_id": "...", "operation": "...", "input_values": [0.0], "extracted_value": 0.0, "referenced_ids": ["..."], "confidence": 0.0, "notes": ["..."]}
+  ],
+  "assumptions": ["..."],
+  "confidence": 0.0,
+  "notes": ["..."]
+}
+
+Allowed mode values: ['final_answer_only', 'partial_trace', 'full_trace', 'unparseable']
+Allowed step operation values: ['add', 'subtract', 'multiply', 'divide', 'percent_of', 'derive', 'unknown']
+Allowed selected_target_ref and referenced_ids values: ['how_many_people_were_on_the_ship_the_monster_ate_in_the_first_hundred_years', 'quantity_1']
+Allowed step_id values: ['student_step_1', 'student_step_2', 'student_step_3', 'student_step_4']
+
+Hard constraints:
+1. Do not invent new step_id values; reuse only the step ids from the draft.
+2. Do not include raw_text in step_updates; local code preserves the original student text.
+3. referenced_ids may contain only values from the allowed refs list.
+4. If the student's text does not support a field confidently, omit it instead of guessing.
+5. Do not add steps that are not visible in the student's answer.
+6. Notes must be short and factual.
+
+Attempt index: 1
+
+Structured feedback from the previous failed attempt:
+[]
+
+Compact heuristic draft for reference only:
+{"raw_answer": "Let the first ship have x people.Then the next two ships had 2x and 4x people.x + 2x + 4x = 847. 7x = 847. x = 847/7. x = 117.Answer is 117.", "normalized_final_answer": 117.0, "mode": "partial_trace", "selected_target_ref": null, "steps": [{"step_id": "student_step_1", "raw_text": "Let the first ship have x people.Then the next two ships had 2x and 4x people.x + 2x + 4x = 847.", "operation": "derive", "input_values": [], "extracted_value": 117.0, "referenced_ids": ["quantity_1"]}, {"step_id": "student_step_2", "raw_text": "7x = 847.", "operation": "unknown", "input_values": [], "extracted_value": null, "referenced_ids": ["quantity_1"]}, {"step_id": "student_step_3", "raw_text": "x = 847/7.", "operation": "unknown", "input_values": [], "extracted_value": null, "referenced_ids": ["quantity_1"]}, {"step_id": "student_step_4", "raw_text": "x = 117.Answer is 117.", "operation": "unknown", "input_values": [], "extracted_value": null, "referenced_ids": []}], "allowed_refs": ["how_many_people_were_on_the_ship_the_monster_ate_in_the_first_hundred_years", "quantity_1"]}
+LLM response:
+{
+  "normalized_final_answer": 117.0,
+  "mode": "full_trace",
+  "selected_target_ref": "quantity_1",
+  "step_updates": [
+    {
+      "step_id": "student_step_1",
+      "operation": "derive",
+      "input_values": [
+        0.0
+      ],
+      "extracted_value": 117.0,
+      "referenced_ids": [
+        "quantity_1"
+      ],
+      "confidence": 0.8,
+      "notes": [
+        "Formed equation x + 2x + 4x = 847 from the setup."
+      ]
+    },
+    {
+      "step_id": "student_step_2",
+      "operation": "unknown",
+      "input_values": [
+        0.0
+      ],
+      "extracted_value": null,
+      "referenced_ids": [
+        "quantity_1"
+      ],
+      "confidence": 0.6,
+      "notes": [
+        "State 7x = 847."
+      ]
+    },
+    {
+      "step_id": "student_step_3",
+      "operation": "unknown",
+      "input_values": [
+        0.0
+      ],
+      "extracted_value": null,
+      "referenced_ids": [
+        "quantity_1"
+      ],
+      "confidence": 0.6,
+      "notes": [
+        "State x = 847/7."
+      ]
+    },
+    {
+      "step_id": "student_step_4",
+      "operation": "unknown",
+      "input_values": [
+        0.0
+      ],
+      "extracted_value": null,
+      "referenced_ids": [],
+      "confidence": 0.6,
+      "notes": [
+        "State x = 117. Answer is 117."
+      ]
+    }
+  ],
+  "assumptions": [
+    "x represents the number of people on the first ship."
+  ],
+  "confidence": 0.0,
+  "notes": [
+    "Answer given as 117.",
+    "llm_student_parse_attempt:1"
+  ]
+}
+
+==================== Summary ====================
+Heuristic mode: partial_trace
+Final mode: full_trace
+Heuristic final answer: 117.0
+Final final answer: 117.0
+Selected target ref: quantity_1
+Reference available: False
+Reference build error: Unable to build canonical reference: Executable plan has no steps
+Student graph present: True
+Student graph target node: student_final_answer

@@ -1,123 +1,172 @@
-"""
-Main Demo Script - End-to-End Tutoring Pipeline with Real LLM.
+"""Demo runner for the end-to-end tutoring pipeline."""
+from __future__ import annotations
 
-Requires OPENROUTER_API_KEY environment variable.
-Usage: python main.py
-"""
-import os
-import logging
-import sys
+import json
+from typing import Any
 
-# Ensure src is in path
-sys.path.append(os.path.abspath("."))
+from src.llm import LLMClient, build_default_llm_client
+from src.models import HintMode
+from src.pipeline import run_tutoring_pipeline
 
-from src.solver.reference_parser import parse_solver_response, ParseStatus
-from src.solver.qwen_client import QwenSolverClient, build_solver_config_from_env
-from src.checker.answer_checker import check_answer
-from src.diagnosis.engine import diagnose
-from src.verification.symbolic_state_builder import build_symbolic_state
-from src.verification.symbolic_verifier import verify_symbolic_consistency
-from src.hint.controller import HintController
-from src.utils.llm_client import openrouter_llm_adapter
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-try:
-    # Prevent UnicodeEncodeError on Windows terminals when hints contain Vietnamese text.
-    sys.stdout.reconfigure(encoding="utf-8")
-except Exception:
-    pass
+# Demo inputs. Edit these values and run `python main.py`.
+PROBLEM_TEXT = (
+    "A concert ticket costs $40. Mr. Benson bought 12 tickets and received a 5% discount for every ticket bought that exceeds 10. How much did Mr. Benson pay in all?"
+)
+STUDENT_ANSWER = "12 * 40 = 480\n12 - 10 = 2\n5% of 40 = 2\n2 * 2 = 4\n480 - 4 = 474\nAnswer is 474."
 
-def run_tutor_demo():
-    # 0. Check for API Token
-    if "OPENROUTER_API_KEY" not in os.environ:
-        print("ERROR: Please set the OPENROUTER_API_KEY environment variable.")
-        print("Example (Windows PowerShell): $env:OPENROUTER_API_KEY='your_token_here'")
+# When True, the pipeline will try the configured OpenRouter model and fall back
+# safely to deterministic logic if an LLM step fails.
+USE_LLM = True
+
+# Other options: HintMode.SCAFFOLDING, HintMode.PEDAGOGY_FOLLOWING
+HINT_MODE = HintMode.NORMAL
+
+_LLM_TASK_ORDER = (
+    "problem_formalizer",
+    "student_work_formalizer",
+    "diagnosis",
+    "hint_generator",
+    "hint_repair",
+)
+
+
+class RecordingLLMClient:
+    """Wrap an LLM client and keep every successful/failed generation for inspection."""
+
+    def __init__(self, base_client: LLMClient):
+        self._base_client = base_client
+        self.records: list[dict[str, Any]] = []
+
+    def generate_json(
+        self,
+        task_name: str,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.0,
+        max_tokens: int = 1200,
+    ) -> dict[str, Any]:
+        try:
+            payload = self._base_client.generate_json(
+                task_name=task_name,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        except Exception as exc:
+            self.records.append(
+                {
+                    "task_name": task_name,
+                    "status": "error",
+                    "error": str(exc),
+                }
+            )
+            raise
+
+        self.records.append(
+            {
+                "task_name": task_name,
+                "status": "success",
+                "response": payload,
+            }
+        )
+        return payload
+
+
+def _print_header(title: str) -> None:
+    line = "=" * 24
+    print(f"\n{line} {title} {line}")
+
+
+def _print_json(title: str, payload) -> None:
+    _print_header(title)
+    print(json.dumps(payload, indent=2, ensure_ascii=False))
+
+
+def _print_llm_responses(
+    records: list[dict[str, Any]],
+    llm_requested: bool,
+    llm_available: bool,
+) -> None:
+    _print_header("LLM Responses")
+
+    if not llm_requested:
+        print("LLM disabled.")
         return
 
-    # 1. Input Problem (GSM8K Style)
-    problem_text = "A concert ticket costs $40. Mr. Benson bought 12 tickets and received a 5% discount for every ticket bought that exceeds 10. How much did Mr. Benson pay in all?"
-    student_answer_raw = "Answer is 516." # Wrong answer for demo
-    
-    print(f"--- PROBLEM ---\n{problem_text}")
-    print(f"--- STUDENT ANSWER ---\n{student_answer_raw}\n")
-
-    # 2. Reference Solution (Using real LLM + parser)
-    print("Step 1: Generating Reference Solution...")
-    solver_client = QwenSolverClient(config=build_solver_config_from_env())
-    try:
-        solver_response = solver_client.solve(problem_text)
-    finally:
-        solver_client.close()
-
-    parse_result = parse_solver_response(solver_response)
-    if parse_result.status != ParseStatus.SUCCESS or parse_result.reference is None:
-        print("ERROR: Failed to parse reference answer from solver output.")
-        print(f"Parse status: {parse_result.status.value}")
-        print(f"Details: {parse_result.error_message}")
-        print("Raw solver output:")
-        print(solver_response.raw_text or solver_response.error_message)
+    if not llm_available:
+        print("No configured LLM client was available, so the pipeline ran without LLM calls.")
         return
 
-    ref_sol = parse_result.reference
-    print(f"Parser status: {parse_result.status.value}")
-    print(f"Reference Answer: {ref_sol.final_answer}\n")
-
-    # 3. Answer Checking
-    print("Step 2: Checking Student Answer...")
-    check_res = check_answer(student_answer_raw, ref_sol.final_answer)
-    print(f"Correctness: {check_res.correctness.value}")
-    print(f"Normalized Student Value: {check_res.student_value}\n")
-
-    if check_res.correctness.value == "correct":
-        print("Student is correct! No hint needed.")
+    if not records:
+        print("No LLM calls were captured.")
         return
 
-    # 4. Build Phase 2 symbolic evidence
-    print("Step 3: Building Symbolic Evidence...")
-    symbolic_state = build_symbolic_state(problem_text, ref_sol.solution_text)
-    verification_result = verify_symbolic_consistency(symbolic_state, check_res)
-    print(f"Verifier status: {verification_result.status.value}")
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        grouped.setdefault(str(record["task_name"]), []).append(record)
 
-    # 5. Diagnosis (rule + symbolic evidence + LLM fallback)
-    print("Step 4: Diagnosing Student Error...")
-    diag_res = diagnose(
-        problem_text=problem_text,
-        reference_solution_text=ref_sol.solution_text,
-        reference_answer=ref_sol.final_answer,
-        student_raw=student_answer_raw,
-        check_result=check_res,
-        llm_callable=openrouter_llm_adapter,
-        symbolic_state=symbolic_state,
-        verification_result=verification_result,
+    for task_name in _LLM_TASK_ORDER:
+        task_records = grouped.get(task_name, [])
+        print(f"\n[{task_name}]")
+        if not task_records:
+            print("  No call captured.")
+            continue
+
+        for index, record in enumerate(task_records, start=1):
+            print(f"  Call {index}: {record['status']}")
+            if record["status"] == "success":
+                print(
+                    json.dumps(
+                        record["response"],
+                        indent=2,
+                        ensure_ascii=False,
+                    )
+                )
+            else:
+                print(f"  Error: {record['error']}")
+
+
+def main() -> None:
+    base_llm_client = build_default_llm_client() if USE_LLM else None
+    recording_llm_client = RecordingLLMClient(base_llm_client) if base_llm_client is not None else None
+    active_use_llm = USE_LLM and recording_llm_client is not None
+
+    print("Tutoring Pipeline Demo")
+    print(f"USE_LLM = {USE_LLM}")
+    print(f"HINT_MODE = {HINT_MODE.value}")
+    print(f"LLM client available = {base_llm_client is not None}")
+
+    result = run_tutoring_pipeline(
+        problem_text=PROBLEM_TEXT,
+        student_answer=STUDENT_ANSWER,
+        hint_mode=HINT_MODE,
+        llm_client=recording_llm_client,
+        use_llm=active_use_llm,
     )
-    print(f"Error Label: {diag_res.label.value}")
-    print(f"Explanation: {diag_res.explanation}\n")
 
-    # 6. Hint Generation (Using real LLM)
-    print("Step 5: Generating Pedagogical Hint...")
-    # HintController coordinates generation, verification, and fallback
-    hint_controller = HintController(llm_callable=openrouter_llm_adapter)
-    hint_res = hint_controller.get_hint(
-        problem_text=problem_text,
-        reference_solution_text=ref_sol.solution_text,
-        reference_answer=ref_sol.final_answer,
-        student_raw=student_answer_raw,
-        diagnosis=diag_res
+    _print_json("Input", {"problem_text": PROBLEM_TEXT, "student_answer": STUDENT_ANSWER})
+    _print_json("Problem", result.problem.model_dump(mode="json"))
+    _print_json("Reference", result.reference.model_dump(mode="json"))
+    _print_json("Student Work", result.student_work.model_dump(mode="json"))
+    _print_json("Evidence", result.evidence.model_dump(mode="json"))
+    _print_json("Diagnosis", result.diagnosis.model_dump(mode="json"))
+    _print_json("Hint Plan", result.hint_plan.model_dump(mode="json"))
+    _print_json("Hint Result", result.hint_result.model_dump(mode="json"))
+    _print_llm_responses(
+        recording_llm_client.records if recording_llm_client is not None else [],
+        llm_requested=USE_LLM,
+        llm_available=base_llm_client is not None,
     )
 
-    print("--- FINAL RESULT ---")
-    print(f"Hint Level: {hint_res.hint_level.value}")
-    print(f"Hint Text: {hint_res.hint_text}")
-    print(f"Verification Info: Spoiler-free? {'Yes' if not hint_res.fallback_used else 'Fallback Used'}")
-    if hint_res.attempted_hints:
-        print("\n--- HINT ATTEMPTS FROM MODEL ---")
-        for idx, attempted_hint in enumerate(hint_res.attempted_hints, start=1):
-            print(f"Attempt {idx}: {attempted_hint}")
-    if hint_res.verification_notes:
-        print("\n--- HINT VERIFICATION NOTES ---")
-        for note in hint_res.verification_notes:
-            print(f"- {note}")
+    _print_header("Summary")
+    print(f"Reference final answer: {result.reference.final_answer:g}")
+    print(f"Student normalized answer: {result.student_work.normalized_final_answer}")
+    print(f"Diagnosis label: {result.diagnosis.diagnosis_label.value}")
+    print(f"Hint text: {result.hint_result.hint_text}")
+    print(f"Hint verified: {result.hint_result.verification_passed}")
+
 
 if __name__ == "__main__":
-    run_tutor_demo()
+    main()

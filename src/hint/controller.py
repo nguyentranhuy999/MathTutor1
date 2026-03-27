@@ -1,132 +1,96 @@
-﻿"""End-to-end hint controller: orchestrates generation, verification, and fallback."""
-import logging
-from typing import Optional
+"""Hint controller that generates and verifies hint output."""
+from __future__ import annotations
 
+from src.hint.generator import generate_hint_text
+from src.hint.repair import repair_hint_text
+from src.hint.verifier import verify_hint_text
+from src.llm import LLMClient
 from src.models import (
-    HintResult,
-    HintLevel,
+    CanonicalReference,
     DiagnosisResult,
-    DiagnosisLabel,
-    VerificationResult,
+    FormalizedProblem,
+    HintMode,
+    HintPlan,
+    HintResult,
+    TeacherMove,
 )
-from src.hint.engine import generate_hint
-from src.hint.verifier import verify_hint_no_spoiler, verify_hint_alignment
-from src.hint.fallback import get_static_fallback_hint
-from src.hint.policy import derive_preferred_hint_level
-
-logger = logging.getLogger(__name__)
 
 
-class HintController:
-    """Orchestrator for pedagogical hint generation."""
+def _fallback_hint(plan: HintPlan) -> str:
+    if plan.teacher_move == TeacherMove.REFOCUS_TARGET:
+        return "Read the question again and decide what quantity you still need to find."
+    if plan.teacher_move == TeacherMove.CHECK_RELATIONSHIP:
+        return "Think about how the quantities should be related before you calculate."
+    if plan.teacher_move == TeacherMove.RECOMPUTE_STEP:
+        return "Check that arithmetic step carefully and try it again."
+    if plan.teacher_move == TeacherMove.CONTINUE_FROM_STEP:
+        return "Use the quantities you already found and recompute the last step carefully."
+    if plan.teacher_move == TeacherMove.METACOGNITIVE_PROMPT:
+        return "Restate what the problem is asking for and give one clear numeric answer."
+    return "Your answer is correct."
 
-    def __init__(self, llm_callable=None, max_retries: int = 1):
-        self.llm_callable = llm_callable
-        self.max_retries = max_retries
 
-    @staticmethod
-    def _derive_preferred_level(
-        diagnosis: DiagnosisResult,
-        verification_result: Optional[VerificationResult],
-        preferred_level: Optional[HintLevel],
-    ) -> Optional[HintLevel]:
-        return derive_preferred_hint_level(
-            diagnosis=diagnosis,
-            verification_result=verification_result,
-            preferred_level=preferred_level,
+def build_hint_result(
+    problem: FormalizedProblem,
+    reference: CanonicalReference,
+    diagnosis: DiagnosisResult,
+    plan: HintPlan,
+    hint_mode: HintMode = HintMode.NORMAL,
+    llm_client: LLMClient | None = None,
+) -> HintResult:
+    """Generate a hint and verify it against the hint plan."""
+    hint_text = generate_hint_text(
+        problem,
+        reference,
+        diagnosis,
+        plan,
+        hint_mode=hint_mode,
+        llm_client=llm_client,
+    )
+    violated_rules = verify_hint_text(hint_text, plan)
+    verification_passed = len(violated_rules) == 0
+    notes: list[str] = []
+
+    if not verification_passed:
+        repair_result = repair_hint_text(
+            problem,
+            reference,
+            diagnosis,
+            plan,
+            original_hint=hint_text,
+            hint_mode=hint_mode,
+            llm_client=llm_client,
         )
-
-    def get_hint(
-        self,
-        problem_text: str,
-        reference_solution_text: str,
-        reference_answer: float,
-        student_raw: str,
-        diagnosis: DiagnosisResult,
-        preferred_level: Optional[HintLevel] = None,
-        verification_result: Optional[VerificationResult] = None,
-    ) -> HintResult:
-        """Get a verified pedagogical hint.
-
-        Lifecycle:
-        1. Fast-path for correct answers.
-        2. Generate hint via engine.
-        3. Verify hint (no spoilers + pedagogical alignment).
-        4. Retry if checks fail (up to max_retries).
-        5. Fallback to static hint if all else fails.
-        """
-        if diagnosis.label == DiagnosisLabel.CORRECT_ANSWER:
-            return HintResult(
-                hint_level=HintLevel.CONCEPTUAL,
-                hint_text="Your answer is completely correct. Great work!",
-                generated_status="success",
-                diagnosis_label_used=diagnosis.label,
-                fallback_used=False,
-            )
-
-        derived_level = self._derive_preferred_level(
-            diagnosis=diagnosis,
-            verification_result=verification_result,
-            preferred_level=preferred_level,
-        )
-
-        last_failed_hint = None
-        attempted_hints = []
-        verification_notes = []
-        for attempt in range(self.max_retries + 1):
-            hint_res = generate_hint(
-                problem_text=problem_text,
-                reference_solution_text=reference_solution_text,
-                student_raw=student_raw,
-                diagnosis=diagnosis,
-                llm_callable=self.llm_callable,
-                preferred_level=derived_level,
-            )
-
-            if hint_res.generated_status == "success":
-                attempted_hints.append(hint_res.hint_text)
-                spoiler_ok = verify_hint_no_spoiler(hint_res.hint_text, reference_answer)
-                alignment_ok = verify_hint_alignment(
-                    hint_res.hint_text,
-                    diagnosis_label=diagnosis.label,
-                    expected_level=hint_res.hint_level,
-                    diagnosis_localization=diagnosis.localization,
-                )
-
-                if spoiler_ok and alignment_ok:
-                    hint_res.attempted_hints = attempted_hints
-                    hint_res.verification_notes = verification_notes + ["accepted"]
-                    return hint_res
-
-                if not spoiler_ok:
-                    verification_notes.append(f"attempt_{attempt + 1}: spoiler")
-                    logger.warning("Attempt %d: Spoiler detected in generated hint.", attempt + 1)
-                    logger.warning("Rejected hint text: %s", hint_res.hint_text)
-                if not alignment_ok:
-                    verification_notes.append(f"attempt_{attempt + 1}: alignment_failed")
-                    logger.warning("Attempt %d: Hint pedagogical alignment check failed.", attempt + 1)
-                    logger.warning("Rejected hint text: %s", hint_res.hint_text)
-                last_failed_hint = hint_res
+        repaired_violations = verify_hint_text(repair_result.hint_text, plan)
+        if not repaired_violations:
+            hint_text = repair_result.hint_text
+            violated_rules = []
+            verification_passed = True
+            notes.extend(repair_result.notes)
+            notes.append("used_repaired_hint")
+        else:
+            notes.extend(repair_result.notes)
+            fallback = _fallback_hint(plan)
+            fallback_violations = verify_hint_text(fallback, plan)
+            if not fallback_violations:
+                hint_text = fallback
+                violated_rules = []
+                verification_passed = True
+                notes.append("used_fallback_hint")
             else:
-                if hint_res.hint_text:
-                    attempted_hints.append(hint_res.hint_text)
-                verification_notes.append(f"attempt_{attempt + 1}: generation_failed")
-                logger.warning("Attempt %d: Hint generation failed.", attempt + 1)
-                last_failed_hint = hint_res
+                violated_rules = repaired_violations
+                hint_text = repair_result.hint_text
+                notes.append("fallback_hint_still_failed_verification")
 
-        logger.info("Falling back to static hint for label: %s", diagnosis.label)
-        static_text = get_static_fallback_hint(diagnosis.label)
+    confidence = min(plan.confidence + (0.04 if verification_passed else -0.1), 0.97)
+    confidence = max(confidence, 0.2)
 
-        fallback_level = derived_level or HintLevel.CONCEPTUAL
-        if last_failed_hint is not None:
-            fallback_level = last_failed_hint.hint_level
-
-        return HintResult(
-            hint_level=fallback_level,
-            hint_text=static_text,
-            generated_status="success",
-            diagnosis_label_used=diagnosis.label,
-            fallback_used=True,
-            attempted_hints=attempted_hints,
-            verification_notes=verification_notes,
-        )
+    return HintResult(
+        hint_text=hint_text,
+        hint_level=plan.hint_level,
+        hint_mode=hint_mode,
+        verification_passed=verification_passed,
+        violated_rules=violated_rules,
+        confidence=confidence,
+        notes=notes,
+    )

@@ -1,288 +1,133 @@
-"""Baseline + Phase 2 diagnosis engine.
+"""Diagnosis engine with grounded hypothesis scoring and optional LLM critique."""
+from __future__ import annotations
 
-Phase 2 enhancement:
-- Supports optional symbolic evidence (`SymbolicState`, `VerificationResult`) before LLM fallback.
-"""
 import json
-import logging
-import re
-from typing import Optional
 
-from src.models import (
-    DiagnosisLabel,
-    DiagnosisResult,
-    ErrorLocalization,
-    AnswerCheckResult,
-    Correctness,
-    OperationType,
-    SymbolicState,
-    VerificationResult,
-    VerificationStatus,
-)
-
-logger = logging.getLogger(__name__)
-
-DIAGNOSIS_PROMPT_TEMPLATE = """You are a math tutoring diagnosis system. Analyze the student's error and classify it.
-
-## Problem
-{problem}
-
-## Reference Solution
-{reference_solution}
-Reference Answer: {reference_answer}
-
-## Student Answer
-Raw: {student_raw}
-Normalized Value: {student_value}
-Correctness: {correctness}
-
-## Symbolic Evidence (if available)
-{symbolic_evidence}
-
-## Task
-Classify the student's error into exactly ONE of these categories:
-- correct_answer: Student answered correctly
-- arithmetic_error: Student understood the problem but made a calculation mistake
-- quantity_relation_error: Student set up wrong relationships between quantities
-- target_misunderstanding: Student solved for the wrong thing entirely
-- unparseable_answer: Cannot determine what the student meant
-- unknown_error: Error doesn't fit other categories
-
-Also specify where the error occurred:
-- none: No error (correct answer)
-- final_computation: Error in the last calculation step
-- intermediate_step: Error in a middle step
-- target_selection: Student chose wrong target to solve for
-- unknown: Cannot determine
-
-Respond ONLY with valid JSON:
-{{"label": "<label>", "localization": "<localization>", "explanation": "<brief explanation>"}}"""
+from src.diagnosis.scoring import DiagnosisHypothesis, build_diagnosis_hypotheses
+from src.llm import LLMClient, LLMGenerationError
+from src.models import DiagnosisEvidence, DiagnosisLabel, DiagnosisResult, ErrorLocalization
 
 
-def build_diagnosis_prompt(
-    problem_text: str,
-    reference_solution_text: str,
-    reference_answer: float,
-    student_raw: str,
-    check_result: AnswerCheckResult,
-    symbolic_state: Optional[SymbolicState] = None,
-    verification_result: Optional[VerificationResult] = None,
-) -> str:
-    """Build the diagnosis prompt with all context."""
-    symbolic_lines = []
-    if symbolic_state is not None:
-        symbolic_lines.append(
-            f"state: op={symbolic_state.expected_operation.value}, quantities={len(symbolic_state.quantities)}, "
-            f"builder_conf={symbolic_state.builder_confidence:.2f}"
-        )
-    if verification_result is not None:
-        symbolic_lines.append(
-            f"verify: status={verification_result.status.value}, predicted_label={verification_result.predicted_label}, "
-            f"flags={verification_result.evidence_flags}, conf={verification_result.confidence:.2f}"
-        )
-    symbolic_evidence = "\n".join(symbolic_lines) if symbolic_lines else "none"
+def _evidence_types(evidence: DiagnosisEvidence) -> list[str]:
+    return [item.evidence_type for item in evidence.evidence_items]
 
-    return DIAGNOSIS_PROMPT_TEMPLATE.format(
-        problem=problem_text,
-        reference_solution=reference_solution_text,
-        reference_answer=reference_answer,
-        student_raw=student_raw,
-        student_value=check_result.student_value,
-        correctness=check_result.correctness.value,
-        symbolic_evidence=symbolic_evidence,
+
+def _build_result_from_hypothesis(
+    hypothesis: DiagnosisHypothesis,
+    evidence: DiagnosisEvidence,
+    extra_notes: list[str] | None = None,
+) -> DiagnosisResult:
+    notes = list(evidence.notes)
+    notes.extend(f"diagnosis_rationale:{reason}" for reason in hypothesis.rationale)
+    if extra_notes:
+        notes.extend(extra_notes)
+
+    confidence = min(max(evidence.confidence + min(hypothesis.score / 20.0, 0.12), 0.35), 0.98)
+    return DiagnosisResult(
+        diagnosis_label=hypothesis.label,
+        subtype=hypothesis.subtype,
+        localization=hypothesis.localization,
+        target_step_id=evidence.first_divergence_step_id,
+        summary=hypothesis.summary,
+        supporting_evidence_types=hypothesis.supporting_evidence_types or _evidence_types(evidence),
+        confidence=confidence,
+        notes=notes,
     )
 
 
-def parse_diagnosis_response(raw_response: str) -> DiagnosisResult:
-    """Parse LLM response into a validated DiagnosisResult.
+def _deterministic_diagnosis(evidence: DiagnosisEvidence) -> tuple[DiagnosisResult, list[DiagnosisHypothesis]]:
+    hypotheses = build_diagnosis_hypotheses(evidence)
+    best = hypotheses[0]
+    runner_up = hypotheses[1] if len(hypotheses) > 1 else None
 
-    Falls back to UnknownError if parsing fails.
-    """
-    try:
-        json_match = re.search(r'\{[^{}]+\}', raw_response, re.DOTALL)
-        if not json_match:
-            raise ValueError("No JSON object found in response")
+    extra_notes: list[str] = []
+    extra_notes.append(f"diagnosis_top_hypothesis={best.label.value}:{best.score:.2f}")
+    if runner_up is not None:
+        margin = best.score - runner_up.score
+        extra_notes.append(f"diagnosis_runner_up={runner_up.label.value}:{runner_up.score:.2f}")
+        extra_notes.append(f"diagnosis_margin={margin:.2f}")
+        if margin < 1.0 and best.label != DiagnosisLabel.CORRECT_ANSWER:
+            extra_notes.append("diagnosis_ambiguous_competing_hypotheses")
+            if best.label == DiagnosisLabel.UNKNOWN_ERROR:
+                extra_notes.append("diagnosis_low_separation_unknown")
 
-        data = json.loads(json_match.group())
-        label_str = data.get("label", "unknown_error")
-        loc_str = data.get("localization", "unknown")
-        explanation = data.get("explanation", "No explanation provided")
-
-        try:
-            label = DiagnosisLabel(label_str)
-        except ValueError:
-            logger.warning("Invalid label '%s', falling back to unknown_error", label_str)
-            label = DiagnosisLabel.UNKNOWN_ERROR
-
-        try:
-            localization = ErrorLocalization(loc_str)
-        except ValueError:
-            logger.warning("Invalid localization '%s', falling back to unknown", loc_str)
-            localization = ErrorLocalization.UNKNOWN
-
-        return DiagnosisResult(
-            label=label,
-            localization=localization,
-            explanation=explanation,
-            confidence=0.7 if label != DiagnosisLabel.UNKNOWN_ERROR else 0.3,
-            fallback_used=False,
-        )
-
-    except Exception as exc:
-        logger.error("Failed to parse diagnosis response: %s", exc)
-        return DiagnosisResult(
-            label=DiagnosisLabel.UNKNOWN_ERROR,
-            localization=ErrorLocalization.UNKNOWN,
-            explanation=f"Failed to parse LLM response: {exc}",
-            confidence=0.1,
-            fallback_used=True,
-        )
+    return _build_result_from_hypothesis(best, evidence, extra_notes=extra_notes), hypotheses
 
 
-def diagnose_with_rules(check_result: AnswerCheckResult) -> Optional[DiagnosisResult]:
-    """Simple rule-based diagnosis for cases that don't need LLM."""
-    if check_result.correctness == Correctness.CORRECT:
-        return DiagnosisResult(
-            label=DiagnosisLabel.CORRECT_ANSWER,
-            localization=ErrorLocalization.NONE,
-            explanation="Student answered correctly",
-            confidence=1.0,
-        )
-
-    if check_result.correctness == Correctness.UNPARSEABLE:
-        return DiagnosisResult(
-            label=DiagnosisLabel.UNPARSEABLE_ANSWER,
-            localization=ErrorLocalization.UNKNOWN,
-            explanation="Could not parse student answer for comparison",
-            confidence=1.0,
-        )
-
-    return None
-
-
-def diagnose_with_symbolic_evidence(
-    check_result: AnswerCheckResult,
-    symbolic_state: Optional[SymbolicState],
-    verification_result: Optional[VerificationResult],
-) -> Optional[DiagnosisResult]:
-    """Phase 2: use symbolic verification as grounded diagnosis evidence."""
-    if check_result.correctness != Correctness.INCORRECT or verification_result is None:
-        return None
-
-    builder_confidence = symbolic_state.builder_confidence if symbolic_state is not None else 0.0
-    quantity_count = len(symbolic_state.quantities) if symbolic_state is not None else 0
-    expected_operation = symbolic_state.expected_operation if symbolic_state is not None else OperationType.UNKNOWN
-
-    symbolic_reliability = (builder_confidence * 0.55) + (verification_result.confidence * 0.45)
-    if expected_operation == OperationType.UNKNOWN:
-        symbolic_reliability -= 0.15
-    if quantity_count < 2:
-        symbolic_reliability -= 0.2
-    symbolic_reliability = max(0.0, min(1.0, symbolic_reliability))
-
-    student_value = check_result.student_value
-    reference_value = check_result.reference_value
-    near_miss_window = max(5.0, abs(reference_value) * 0.15)
-    near_miss_arithmetic = (
-        student_value is not None
-        and abs(student_value - reference_value) > 0
-        and abs(student_value - reference_value) <= near_miss_window
-        and symbolic_state is not None
-        and all(abs(student_value - fact.value) > 1e-9 for fact in symbolic_state.quantities)
+def _llm_diagnose(
+    evidence: DiagnosisEvidence,
+    deterministic_result: DiagnosisResult,
+    hypotheses: list[DiagnosisHypothesis],
+    llm_client: LLMClient,
+) -> DiagnosisResult:
+    system_prompt = (
+        "You are a diagnosis critic for a math tutoring system. Return only a JSON object matching DiagnosisResult. "
+        "Stay grounded in the provided structured evidence and the candidate hypothesis leaderboard. "
+        "Do not invent evidence. Prefer one of the provided hypothesis labels/subtypes unless the leaderboard is clearly inconsistent."
     )
+    leaderboard = [
+        {
+            "diagnosis_label": hypothesis.label.value,
+            "subtype": hypothesis.subtype,
+            "localization": hypothesis.localization.value,
+            "score": hypothesis.score,
+            "summary": hypothesis.summary,
+            "rationale": hypothesis.rationale,
+            "supporting_evidence_types": hypothesis.supporting_evidence_types,
+        }
+        for hypothesis in hypotheses[:4]
+    ]
+    user_prompt = (
+        "Allowed diagnosis_label values: "
+        f"{[label.value for label in DiagnosisLabel]}\n"
+        "Allowed localization values: "
+        f"{[label.value for label in ErrorLocalization]}\n\n"
+        f"Structured evidence:\n{json.dumps(evidence.model_dump(mode='json'), ensure_ascii=True)}\n\n"
+        f"Deterministic baseline diagnosis:\n{json.dumps(deterministic_result.model_dump(mode='json'), ensure_ascii=True)}\n\n"
+        f"Hypothesis leaderboard:\n{json.dumps(leaderboard, ensure_ascii=True)}\n\n"
+        "Return a refined DiagnosisResult JSON object. Keep supporting_evidence_types aligned with the evidence."
+    )
+    payload = llm_client.generate_json(
+        task_name="diagnosis",
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        temperature=0.1,
+        max_tokens=1200,
+    )
+    payload.setdefault("supporting_evidence_types", _evidence_types(evidence))
+    notes = list(payload.get("notes", []))
+    notes.append("llm_diagnosis_used")
+    payload["notes"] = notes
+    llm_result = DiagnosisResult.model_validate(payload)
 
-    if verification_result.status == VerificationStatus.CONFLICT and verification_result.predicted_label:
-        strong_conflict = (
-            verification_result.confidence >= 0.8
-            and verification_result.localization_hint in {
-                ErrorLocalization.COMBINING_QUANTITIES,
-                ErrorLocalization.TARGET_SELECTION,
-            }
-        )
-        if symbolic_reliability < 0.6 and not strong_conflict:
-            return None
-        return DiagnosisResult(
-            label=verification_result.predicted_label,
-            localization=verification_result.localization_hint,
-            explanation=f"Grounded by verifier: {verification_result.explanation}",
-            confidence=min(
-                max(symbolic_reliability, verification_result.confidence if strong_conflict else 0.7),
-                0.9,
-            ),
-            fallback_used=False,
-        )
+    evidence_types = set(_evidence_types(evidence))
+    if "correct_final_answer" in evidence_types and llm_result.diagnosis_label != DiagnosisLabel.CORRECT_ANSWER:
+        raise ValueError("LLM diagnosis conflicts with correct_final_answer evidence")
+    if "unparseable_answer" in evidence_types and llm_result.diagnosis_label != DiagnosisLabel.UNPARSEABLE_ANSWER:
+        raise ValueError("LLM diagnosis conflicts with unparseable_answer evidence")
+    if (
+        "selected_intermediate_reference" in evidence_types or "selected_visible_problem_quantity" in evidence_types
+    ) and llm_result.diagnosis_label != DiagnosisLabel.TARGET_MISUNDERSTANDING:
+        raise ValueError("LLM diagnosis conflicts with target-selection evidence")
+    if "reordered_but_consistent_steps" in evidence_types and "correct_final_answer" in evidence_types:
+        if llm_result.diagnosis_label != DiagnosisLabel.CORRECT_ANSWER:
+            raise ValueError("LLM diagnosis conflicts with reordered but correct evidence")
 
-    if verification_result.status == VerificationStatus.VERIFIED:
-        if symbolic_reliability < 0.62 and not near_miss_arithmetic:
-            return None
-        return DiagnosisResult(
-            label=DiagnosisLabel.ARITHMETIC_ERROR,
-            localization=ErrorLocalization.FINAL_COMPUTATION,
-            explanation=(
-                "Symbolic evidence suggests operation understanding is consistent, "
-                "and the combined builder/verifier confidence passes the diagnosis guardrail."
-                if not near_miss_arithmetic else
-                "Symbolic evidence is partially weak, but the student answer is a clear near-miss rather than a target "
-                "selection or relation error."
-            ),
-            confidence=min(max(symbolic_reliability, 0.62 if near_miss_arithmetic else symbolic_reliability), 0.72),
-            fallback_used=False,
-        )
-
-    return None
+    return llm_result
 
 
 def diagnose(
-    problem_text: str,
-    reference_solution_text: str,
-    reference_answer: float,
-    student_raw: str,
-    check_result: AnswerCheckResult,
-    llm_callable=None,
-    symbolic_state: Optional[SymbolicState] = None,
-    verification_result: Optional[VerificationResult] = None,
+    evidence: DiagnosisEvidence,
+    llm_client: LLMClient | None = None,
 ) -> DiagnosisResult:
-    """Full diagnosis pipeline: rule-based, symbolic-evidence, then LLM."""
-    rule_result = diagnose_with_rules(check_result)
-    if rule_result is not None:
-        return rule_result
-
-    symbolic_result = diagnose_with_symbolic_evidence(
-        check_result=check_result,
-        symbolic_state=symbolic_state,
-        verification_result=verification_result,
-    )
-    if symbolic_result is not None:
-        return symbolic_result
-
-    if llm_callable is None:
-        return DiagnosisResult(
-            label=DiagnosisLabel.UNKNOWN_ERROR,
-            localization=ErrorLocalization.UNKNOWN,
-            explanation="No LLM available for detailed diagnosis",
-            confidence=0.1,
-            fallback_used=True,
-        )
-
-    prompt = build_diagnosis_prompt(
-        problem_text=problem_text,
-        reference_solution_text=reference_solution_text,
-        reference_answer=reference_answer,
-        student_raw=student_raw,
-        check_result=check_result,
-        symbolic_state=symbolic_state,
-        verification_result=verification_result,
-    )
+    """Map structured evidence into a diagnosis result."""
+    deterministic_result, hypotheses = _deterministic_diagnosis(evidence)
+    if llm_client is None:
+        return deterministic_result
 
     try:
-        raw_response = llm_callable(prompt)
-        return parse_diagnosis_response(raw_response)
-    except Exception as exc:
-        logger.error("LLM diagnosis failed: %s", exc)
-        return DiagnosisResult(
-            label=DiagnosisLabel.UNKNOWN_ERROR,
-            localization=ErrorLocalization.UNKNOWN,
-            explanation=f"LLM diagnosis failed: {exc}",
-            confidence=0.1,
-            fallback_used=True,
-        )
+        return _llm_diagnose(evidence, deterministic_result, hypotheses, llm_client)
+    except (LLMGenerationError, ValueError, TypeError):
+        notes = list(deterministic_result.notes)
+        notes.append("llm_diagnosis_failed_fallback")
+        return deterministic_result.model_copy(update={"notes": notes})

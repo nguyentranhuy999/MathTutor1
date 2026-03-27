@@ -1,64 +1,62 @@
-# Neuro-Symbolic Math Tutor (Phase 1)
+# Problem Formalizer
 
-A solver-grounded math tutoring system for multi-step word problems (GSM8K-style). The system uses a Large Language Model (Qwen2.5-Math) to generate reference solutions, diagnose student errors according to a pedagogical taxonomy, and provide targeted, non-spoiling hints.
+This repository is the clean foundation for the new math tutoring architecture:
 
-## 🚀 Key Features
+`Problem -> Problem Formalizer -> Executable Solver -> Evidence Builder -> Diagnosis -> Pedagogy Planner -> Hint`
 
-- **Reference Solver + Parser:** Generates step-by-step solutions via Qwen2.5-Math and parses `#### <answer>` into structured `ReferenceSolution`.
-- **Answer Checker:** Robust normalization and comparison of student and reference answers.
-- **Symbolic Verifier (Phase 2):** Builds lightweight symbolic state + verification flags before diagnosis.
-- **Diagnosis Engine:** Classifies student errors (Arithmetic, Relation, Target Misunderstanding, etc.) with symbolic evidence fusion.
-- **Pedagogical Hinting:** Generates conceptual, relational, or next-step hints.
-- **Hint Verification (Phase 2):** Automated spoiler + pedagogical alignment checks for generated hints.
-- **Fallback System:** Reliable Vietnamese hints if the generative pipeline fails.
+Completed so far:
 
-## 🛠️ Installation
+- shared core schemas
+- formalizer/runtime/pedagogy schemas
+- deterministic problem formalizer
+- deterministic student-work formalizer
+- shared reference trace builder
+- executable runtime with plan compilation, execution, and canonical reference building
+- deterministic evidence builder
+- deterministic diagnosis engine
+- deterministic pedagogy planner
+- deterministic hint generation and verification
+- end-to-end tutoring pipeline runner
+- tests for `models`, `formalizer`, `runtime`, `evidence`, `diagnosis`, `pedagogy`, `hint`, and `pipeline`
 
-1.  Clone the repository.
-2.  Install dependencies:
-    ```bash
-    pip install -r requirements.txt
-    ```
-3.  Set your OpenRouter key in a `.env` file:
-    ```text
-    OPENROUTER_API_KEY=your_openrouter_key
-    OPENROUTER_MODEL=qwen/qwen2.5-7b-instruct
-    ```
+## Current Structure
 
-## 🖥️ Usage
+- `src/models`
+  - shared types and structured artifacts
+- `src/formalizer`
+  - problem formalization, student-work formalization, and trace extraction
+- `src/runtime`
+  - executable plan compilation and execution
+- `src/evidence`
+  - structured evidence building from problem, reference, and student artifacts
+- `src/diagnosis`
+  - evidence-first diagnosis engine
+- `src/pedagogy`
+  - deterministic pedagogy planner
+- `src/hint`
+  - hint generation and verification
+- `src/pipeline`
+  - end-to-end tutoring pipeline runner
+- `docs/problem_formalizer_roadmap.md`
+  - architecture roadmap
 
-Run the end-to-end demo script:
-```bash
-python main.py
+## Testing
+
+```powershell
+.\venv\Scripts\python.exe -m pytest tests\formalizer tests\models tests\runtime tests\evidence tests\diagnosis tests\pedagogy tests\hint tests\pipeline
 ```
 
-Run a small evaluation harness (recommended for research iterations):
-```bash
-python run_eval.py --split test --limit 50
-```
+## Current Scope
 
-## 🧪 Testing
+The repository now supports an end-to-end deterministic tutoring pipeline:
 
-Run normalized unit tests:
-```bash
-pytest
-```
+- problem formalization
+- executable reference solving
+- student-work formalization
+- evidence building
+- diagnosis
+- pedagogy planning
+- hint generation and verification
 
-## 🏗️ Architecture
-
-- `src/solver`: LLM client and parsing.
-- `src/checker`: Answer comparison logic.
-- `src/diagnosis`: Error classification engine.
-- `src/hint`: Hint generation and verification pipeline.
-- `src/models`: Shared Pydantic data contracts.
-- `src/utils`: Shared utilities (LLM adapters).
-
-
-### Model Configuration
-
-`src/utils/llm_client.py` defaults to `Qwen/Qwen2.5-Math-7B-Instruct` to stay aligned with solver settings.
-You can override this with:
-
-```bash
-export HF_MODEL_ID="Qwen/Qwen2.5-Math-7B-Instruct"
-```
+Future extensions can add LLM-backed fallbacks or richer natural-language hints,
+but the core tutoring loop is now complete without depending on a legacy pipeline.
