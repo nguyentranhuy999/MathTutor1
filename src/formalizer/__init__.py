@@ -2,6 +2,7 @@
 
 from src.formalizer.problem_graph import build_problem_graph
 from src.formalizer.problem_formalizer import formalize_problem, validate_formalized_problem
+from src.formalizer.neo4j_visualizer import export_problem_graph_to_neo4j_cypher
 from src.formalizer.reference_trace import (
     build_reference_trace,
     build_student_partial_trace,
@@ -16,6 +17,7 @@ __all__ = [
     "build_reference_trace",
     "build_student_work_graph",
     "build_student_partial_trace",
+    "export_problem_graph_to_neo4j_cypher",
     "formalize_problem",
     "formalize_student_work",
     "parse_trace_step",
