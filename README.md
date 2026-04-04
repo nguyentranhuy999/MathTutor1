@@ -25,6 +25,7 @@ Thay vì phụ thuộc hoàn toàn vào một lời giải tự do của mô hì
 - [Cài đặt](#cài-đặt)
 - [Cấu hình môi trường](#cấu-hình-môi-trường)
 - [Cách chạy](#cách-chạy)
+- [Trực quan hóa graph bằng Neo4j](#trực-quan-hóa-graph-bằng-neo4j)
 - [Các file debug](#các-file-debug)
 - [Cấu trúc thư mục](#cấu-trúc-thư-mục)
 - [Kiểm thử](#kiểm-thử)
@@ -253,9 +254,77 @@ Sửa trực tiếp các biến đầu vào trong `main.py` hoặc trong các fi
 
 ---
 
+## Trực quan hóa graph bằng Neo4j
+
+Package `src.formalizer` có helper để xuất `problem_graph` thành script Cypher:
+
+```python
+from pathlib import Path
+
+from src.formalizer import export_problem_graph_to_neo4j_cypher, formalize_problem
+
+formalized = formalize_problem(
+    "Jan has 3 apples. She buys 5 more apples. How many apples does she have in total?"
+)
+cypher = export_problem_graph_to_neo4j_cypher(
+    formalized.problem_graph,
+    graph_scope="demo_problem_001",
+    clear_scope=True,
+)
+Path("artifacts/problem_graph.cypher").write_text(cypher, encoding="utf-8")
+```
+
+Trong Neo4j Browser:
+
+1. mở DB đang chạy
+2. copy/paste nội dung file `problem_graph.cypher`
+3. chạy script để tạo node + relationship
+4. query kiểm tra nhanh:
+
+```cypher
+MATCH (n:FormalizeNode {graph_scope: 'demo_problem_001'})
+RETURN n
+```
+
+`graph_scope` giúp lưu nhiều phiên bản graph trong cùng một database mà không đè nhau.
+
+---
+
 ## Các file debug
 
 Repo hiện có các file debug chính sau:
+
+### `debug_graph_export.py`
+
+Dùng để build `problem_graph` và export ra file Cypher cho Neo4j, không cần chạy full `main.py`.
+
+Chạy:
+
+```powershell
+.\venv\Scripts\python.exe debug_graph_export.py
+```
+
+Xuất ra:
+
+- `artifacts/problem_graph.cypher`
+
+### `debug_llm_solution_graph.py`
+
+Dùng để lấy response từ model (LLM), tạo lời giải chuẩn, và export graph/các artifact phục vụ debug.
+
+Chạy:
+
+```powershell
+.\venv\Scripts\python.exe debug_llm_solution_graph.py
+```
+
+Xuất ra:
+
+- `artifacts/llm_solution_graph.cypher`
+- `artifacts/llm_graph_steps.cypher`
+- `debug_llm_solution_graph_llm_raw.json`
+- `debug_llm_solution_graph_graph_steps.json`
+- `debug_llm_solution_graph_output.txt`
 
 ### `debug_formalizer.py`
 
