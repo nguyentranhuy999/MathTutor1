@@ -294,6 +294,20 @@ RETURN n
 
 Repo hiện có các file debug chính sau:
 
+### `debug_graph_export.py`
+
+Dùng để build `problem_graph` và export ra file Cypher cho Neo4j, không cần chạy full `main.py`.
+
+Chạy:
+
+```powershell
+.\venv\Scripts\python.exe debug_graph_export.py
+```
+
+Xuất ra:
+
+- `artifacts/problem_graph.cypher`
+
 ### `debug_formalizer.py`
 
 Dùng để xem riêng phần chuẩn hóa đề bài.

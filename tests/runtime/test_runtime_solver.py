@@ -64,3 +64,28 @@ def test_runtime_graph_validator_reports_missing_target_production():
 
     assert validation.is_valid is False
     assert any(issue.code == "target_not_produced" for issue in validation.issues)
+
+
+def test_runtime_executor_normalizes_percent_of_expression():
+    formalized = formalize_problem("There are 40 apples. How many apples are there?")
+    plan = compile_executable_plan(formalized)
+    normalized_plan = plan.model_copy(
+        update={
+            "target_ref": "half_value",
+            "steps": [
+                plan.steps[0].model_copy(
+                    update={
+                        "step_id": "step_1_half",
+                        "expression": "50% of quantity_1",
+                        "input_refs": ["quantity_1"],
+                        "output_ref": "half_value",
+                    }
+                )
+            ],
+        }
+    )
+
+    trace = execute_plan(normalized_plan, formalized)
+
+    assert trace.success is True
+    assert trace.final_value == 20.0

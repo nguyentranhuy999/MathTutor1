@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+import re
 
 from src.models import ExecutablePlan, ExecutionStepResult, ExecutionTrace, FormalizedProblem
 
@@ -49,8 +50,43 @@ def _eval_ast(node: ast.AST, environment: dict[str, float]) -> float:
 
 
 def _evaluate_expression(expression: str, environment: dict[str, float]) -> float:
-    parsed = ast.parse(expression, mode="eval")
+    parsed = ast.parse(_normalize_expression(expression), mode="eval")
     return float(_eval_ast(parsed, environment))
+
+
+def _normalize_expression(expression: str) -> str:
+    normalized = expression.strip()
+    if not normalized:
+        return "0"
+
+    if "=" in normalized and "==" not in normalized:
+        normalized = normalized.split("=", 1)[-1].strip()
+
+    normalized = (
+        normalized.replace("−", "-")
+        .replace("–", "-")
+        .replace("—", "-")
+        .replace("×", "*")
+        .replace("÷", "/")
+    )
+
+    percent_of_pattern = re.compile(
+        r"(?P<percent>(?:\d+(?:\.\d+)?)|(?:[a-zA-Z_]\w*))\s*%\s*of\s*(?P<target>[a-zA-Z_][\w]*)",
+        flags=re.IGNORECASE,
+    )
+    while True:
+        updated = percent_of_pattern.sub(r"((\g<percent> / 100) * \g<target>)", normalized)
+        if updated == normalized:
+            break
+        normalized = updated
+
+    normalized = re.sub(
+        r"(?<![\w.])(\d+(?:\.\d+)?)\s*%",
+        r"(\1 / 100)",
+        normalized,
+    )
+
+    return normalized.rstrip(" .;")
 
 
 def execute_plan(plan: ExecutablePlan, problem: FormalizedProblem) -> ExecutionTrace:
@@ -157,4 +193,3 @@ def execute_plan(plan: ExecutablePlan, problem: FormalizedProblem) -> ExecutionT
         confidence=confidence,
         notes=notes + [f"target_ref={plan.target_ref}"],
     )
-
