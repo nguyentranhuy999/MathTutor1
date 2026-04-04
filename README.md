@@ -308,22 +308,6 @@ Xuất ra:
 
 - `artifacts/problem_graph.cypher`
 
-### `debug_llm_solution_graph.py`
-
-Dùng để lấy response từ model (LLM), tạo lời giải chuẩn, và export graph/các artifact phục vụ debug.
-
-Chạy:
-
-```powershell
-.\venv\Scripts\python.exe debug_llm_solution_graph.py
-```
-
-Xuất ra:
-
-- `artifacts/llm_solution_graph.cypher`
-- `debug_llm_solution_graph_llm_raw.json`
-- `debug_llm_solution_graph_output.txt`
-
 ### `debug_formalizer.py`
 
 Dùng để xem riêng phần chuẩn hóa đề bài.
