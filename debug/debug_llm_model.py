@@ -3,15 +3,25 @@ from __future__ import annotations
 
 import json
 import os
+import sys
+from pathlib import Path
 from typing import Any
 
 import requests
 from dotenv import load_dotenv
 
-PROBLEM_TEXT = (
-    "A concert ticket costs $40. Mr. Benson bought 12 tickets and received a 5% "
-    "discount for every ticket bought that exceeds 10. How much did Mr. Benson pay in all?"
-)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+DEBUG_DIR = Path(__file__).resolve().parent
+OUTPUT_DIR = DEBUG_DIR / "outputs"
+
+from src.shared_input import read_problem_text
+
+
+def _load_problem_text() -> str:
+    return read_problem_text()
 
 
 def _mask_secret(value: str | None, visible: int = 6) -> str:
@@ -44,6 +54,7 @@ def _try_parse_json_text(text: str) -> dict[str, Any] | None:
 
 def main() -> int:
     load_dotenv()
+    problem_text = _load_problem_text()
 
     api_key = os.getenv("OPENROUTER_API_KEY")
     model_id = os.getenv("OPENROUTER_MODEL_ID", "openai/gpt-5-nano")
@@ -86,7 +97,7 @@ def main() -> int:
                 "role": "user",
                 "content": (
                     f"The requested model id is `{model_id}`.\n\n"
-                    f"Problem:\n{PROBLEM_TEXT}\n\n"
+                    f"Problem:\n{problem_text}\n\n"
                     "Please do all of the following:\n"
                     "1. Copy that exact model id into `requested_model_echo`.\n"
                     "2. Write a one-sentence `problem_summary`.\n"
@@ -125,7 +136,7 @@ def main() -> int:
     print(model_id)
 
     print("\nProblem text:")
-    print(PROBLEM_TEXT)
+    print(problem_text)
 
     print("\nResponse model:")
     print(data.get("model", "<missing>"))
@@ -159,9 +170,9 @@ def main() -> int:
     print("\nFull top-level response keys:")
     print(sorted(data.keys()))
 
-    output_path = "debug_llm_model_output.json"
-    with open(output_path, "w", encoding="utf-8") as handle:
-        json.dump(data, handle, indent=2, ensure_ascii=False)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    output_path = OUTPUT_DIR / "debug_llm_model_output.json"
+    output_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"\nSaved full response to {output_path}")
 
     return 0

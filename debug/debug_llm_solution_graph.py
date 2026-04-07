@@ -11,19 +11,18 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 DEBUG_DIR = Path(__file__).resolve().parent
+OUTPUT_DIR = DEBUG_DIR / "outputs"
 ARTIFACT_DIR = DEBUG_DIR / "artifacts"
 
 from src.formalizer import export_problem_graph_to_neo4j_cypher, formalize_problem
 from src.llm import LLMClient, build_default_llm_client
 from src.runtime import build_canonical_reference
+from src.shared_input import read_problem_text
 
-PROBLEM_TEXT = (
-    "A concert ticket costs $40. Mr. Benson bought 12 tickets and received a 5% discount "
-    "for every ticket bought that exceeds 10. How much did Mr. Benson pay in all?"
-)
+PROBLEM_TEXT = read_problem_text()
 GRAPH_SCOPE = "llm_solution_graph"
-RAW_LLM_PATH = DEBUG_DIR / "debug_llm_solution_graph_llm_raw.json"
-SUMMARY_PATH = DEBUG_DIR / "debug_llm_solution_graph_output.txt"
+RAW_LLM_PATH = OUTPUT_DIR / "debug_llm_solution_graph_llm_raw.json"
+SUMMARY_PATH = OUTPUT_DIR / "debug_llm_solution_graph_output.txt"
 CYPHER_PATH = ARTIFACT_DIR / "llm_solution_graph.cypher"
 
 
@@ -75,6 +74,7 @@ def main() -> None:
         clear_scope=True,
     )
 
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     RAW_LLM_PATH.write_text(json.dumps(llm_client.records, indent=2, ensure_ascii=False), encoding="utf-8")
 
     CYPHER_PATH.parent.mkdir(parents=True, exist_ok=True)

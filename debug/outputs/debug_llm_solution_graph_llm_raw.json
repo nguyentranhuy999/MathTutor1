@@ -1,0 +1,154 @@
+[
+  {
+    "task_name": "problem_formalizer",
+    "system_prompt": "You are a math problem formalizer. Return only a compact typed skeleton JSON object. Do not return the full FormalizedProblem. Use only the provided ids and allowed enum values. Your job is to correct semantics and propose an executable operation chain; local code will build the final object.",
+    "user_prompt": "Problem text:\nA concert ticket costs $40. Mr. Benson bought 12 tickets and received a 5% discount for every ticket bought that exceeds 10. How much did Mr. Benson pay in all?\n\nReturn one JSON object with exactly these top-level fields:\n{\n  \"quantity_updates\": [\n    {\"quantity_id\": \"...\", \"semantic_role\": \"...\", \"unit\": \"...\", \"entity_id\": \"...\", \"is_target_candidate\": true}\n  ],\n  \"target_update\": {\"surface_text\": \"...\", \"normalized_question\": \"...\", \"target_variable\": \"...\", \"target_quantity_id\": \"...\", \"entity_id\": \"...\", \"unit\": \"...\", \"description\": \"...\", \"confidence\": 0.0},\n  \"relation_updates\": [\n    {\"relation_id\": \"...\", \"relation_type\": \"...\", \"operation_hint\": \"...\", \"source_quantity_ids\": [\"...\"], \"target_variable\": \"...\", \"expression\": \"...\", \"rationale\": \"...\", \"confidence\": 0.0}\n  ],\n  \"graph_steps\": [\n    {\"step_id\": \"...\", \"step_index\": 1, \"operation\": \"...\", \"input_refs\": [\"...\"], \"output_ref\": \"...\", \"expression\": \"...\", \"label\": \"...\", \"output_unit\": \"...\", \"confidence\": 0.0}\n  ],\n  \"graph_target_node_id\": \"...\",\n  \"graph_confidence\": 0.0,\n  \"graph_notes\": [\"...\"],\n  \"assumptions\": [\"...\"],\n  \"confidence\": 0.0,\n  \"notes\": [\"...\"]\n}\n\nAllowed quantity semantic_role values: ['base', 'rate', 'unit_rate', 'percent', 'threshold', 'intermediate', 'target_candidate', 'unknown']\nAllowed relation_type values: ['additive_composition', 'subtractive_comparison', 'multiplicative_scaling', 'partition_grouping', 'rate_unit_relation', 'unknown']\nAllowed operation_hint values: ['additive', 'subtractive', 'unknown']\nAllowed graph_steps operation values: ['add', 'subtract', 'multiply', 'divide', 'percent_of', 'derive', 'unknown']\n\nHard constraints:\n1. Reuse existing quantity_id and entity_id values from the draft. Do not invent new quantity ids.\n2. graph_target_node_id must match target_update.target_variable or the heuristic target variable.\n3. Each graph step must include step_id, step_index, operation, input_refs, output_ref, and expression.\n4. input_refs may reference only known quantity ids or outputs created by earlier steps.\n5. The final target must be reachable from the graph_steps sequence.\n6. Use only enum values exactly as listed above.\n7. Keep notes concise.\n\nAttempt index: 1\n\nStructured feedback from the previous failed attempt:\n[]\n\nCompact heuristic draft for reference only:\n{\"problem_text\": \"A concert ticket costs $40. Mr. Benson bought 12 tickets and received a 5% discount for every ticket bought that exceeds 10. How much did Mr. Benson pay in all?\", \"quantities\": [{\"quantity_id\": \"quantity_1\", \"surface_text\": \"$40.\", \"value\": 40.0, \"unit\": \"dollars\", \"entity_id\": \"entity_1\", \"semantic_role\": \"unit_rate\", \"is_target_candidate\": false}, {\"quantity_id\": \"quantity_2\", \"surface_text\": \"12\", \"value\": 12.0, \"unit\": \"tickets\", \"entity_id\": \"entity_1\", \"semantic_role\": \"unit_rate\", \"is_target_candidate\": false}, {\"quantity_id\": \"quantity_3\", \"surface_text\": \"5%\", \"value\": 5.0, \"unit\": \"percent\", \"entity_id\": \"entity_1\", \"semantic_role\": \"percent\", \"is_target_candidate\": false}, {\"quantity_id\": \"quantity_4\", \"surface_text\": \"10.\", \"value\": 10.0, \"unit\": \"mr benson\", \"entity_id\": \"entity_1\", \"semantic_role\": \"threshold\", \"is_target_candidate\": false}], \"entities\": [{\"entity_id\": \"entity_1\", \"surface_text\": \"Mr. Benson\", \"normalized_name\": \"Mr. Benson\", \"entity_type\": \"person\"}], \"target\": {\"surface_text\": \"How much did Mr. Benson pay in all?\", \"normalized_question\": \"How much did Mr. Benson pay in all?\", \"target_variable\": \"how_much_did_mr_benson_pay_in_all\", \"target_quantity_id\": \"quantity_1\", \"entity_id\": \"entity_1\", \"unit\": \"dollars\", \"description\": \"How much did Mr. Benson pay in all\"}, \"relation_candidates\": [{\"relation_id\": \"relation_1\", \"relation_type\": \"rate_unit_relation\", \"operation_hint\": \"subtractive\", \"source_quantity_ids\": [\"quantity_1\", \"quantity_2\", \"quantity_3\", \"quantity_4\"], \"target_variable\": \"how_much_did_mr_benson_pay_in_all\", \"expression\": \"how_much_did_mr_benson_pay_in_all = rate_or_percent_relation(quantity_1, quantity_2, quantity_3, quantity_4)\", \"rationale\": \"Heuristic relation candidate built from problem cues and extracted quantities.\"}], \"graph_steps\": [{\"step_id\": \"step_1_excess_quantity\", \"step_index\": 1, \"operation\": \"subtract\", \"expression\": \"max(quantity_2 - quantity_4, 0)\", \"label\": \"Find how many units are beyond the discount threshold.\", \"input_refs\": [\"quantity_2\", \"quantity_4\"], \"output_ref\": \"excess_quantity\"}, {\"step_id\": \"step_2_discount_per_unit\", \"step_index\": 2, \"operation\": \"percent_of\", \"expression\": \"(quantity_3 / 100) * quantity_1\", \"label\": \"Compute the discount value applied to each discounted unit.\", \"input_refs\": [\"quantity_3\", \"quantity_1\"], \"output_ref\": \"discount_per_unit\"}, {\"step_id\": \"step_3_total_discount\", \"step_index\": 3, \"operation\": \"multiply\", \"expression\": \"excess_quantity * discount_per_unit\", \"label\": \"Multiply discounted units by the discount per unit.\", \"input_refs\": [\"excess_quantity\", \"discount_per_unit\"], \"output_ref\": \"total_discount\"}, {\"step_id\": \"step_4_gross_total\", \"step_index\": 4, \"operation\": \"multiply\", \"expression\": \"quantity_2 * quantity_1\", \"label\": \"Compute the total before any discount.\", \"input_refs\": [\"quantity_2\", \"quantity_1\"], \"output_ref\": \"gross_total\"}, {\"step_id\": \"step_5_final_total\", \"step_index\": 5, \"operation\": \"subtract\", \"expression\": \"gross_total - total_discount\", \"label\": \"Subtract the total discount from the gross total.\", \"input_refs\": [\"gross_total\", \"total_discount\"], \"output_ref\": \"how_much_did_mr_benson_pay_in_all\"}], \"graph_target_node_id\": \"how_much_did_mr_benson_pay_in_all\"}",
+    "response": {
+      "quantity_updates": [
+        {
+          "quantity_id": "quantity_1",
+          "semantic_role": "unit_rate",
+          "unit": "dollars",
+          "entity_id": "entity_1",
+          "is_target_candidate": true
+        },
+        {
+          "quantity_id": "quantity_2",
+          "semantic_role": "base",
+          "unit": "tickets",
+          "entity_id": "entity_1",
+          "is_target_candidate": false
+        },
+        {
+          "quantity_id": "quantity_3",
+          "semantic_role": "percent",
+          "unit": "percent",
+          "entity_id": "entity_1",
+          "is_target_candidate": false
+        },
+        {
+          "quantity_id": "quantity_4",
+          "semantic_role": "threshold",
+          "unit": "tickets",
+          "entity_id": "entity_1",
+          "is_target_candidate": false
+        }
+      ],
+      "target_update": {
+        "surface_text": "How much did Mr. Benson pay in all?",
+        "normalized_question": "How much did Mr. Benson pay in all?",
+        "target_variable": "how_much_did_mr_benson_pay_in_all",
+        "target_quantity_id": "quantity_1",
+        "entity_id": "entity_1",
+        "unit": "dollars",
+        "description": "How much did Mr. Benson pay in all",
+        "confidence": 0.0
+      },
+      "relation_updates": [
+        {
+          "relation_id": "relation_1",
+          "relation_type": "rate_unit_relation",
+          "operation_hint": "subtractive",
+          "source_quantity_ids": [
+            "quantity_1",
+            "quantity_2",
+            "quantity_3",
+            "quantity_4"
+          ],
+          "target_variable": "how_much_did_mr_benson_pay_in_all",
+          "expression": "how_much_did_mr_benson_pay_in_all = rate_or_percent_relation(quantity_1, quantity_2, quantity_3, quantity_4)",
+          "rationale": "Derived from per-ticket price, count, discount rate, and threshold",
+          "confidence": 0.0
+        }
+      ],
+      "graph_steps": [
+        {
+          "step_id": "step_1_excess_quantity",
+          "step_index": 1,
+          "operation": "subtract",
+          "input_refs": [
+            "quantity_2",
+            "quantity_4"
+          ],
+          "output_ref": "excess_quantity",
+          "expression": "max(quantity_2 - quantity_4, 0)",
+          "label": "Find how many units are beyond the discount threshold.",
+          "output_unit": "tickets",
+          "confidence": 0.0
+        },
+        {
+          "step_id": "step_2_discount_per_unit",
+          "step_index": 2,
+          "operation": "percent_of",
+          "input_refs": [
+            "quantity_3",
+            "quantity_1"
+          ],
+          "output_ref": "discount_per_unit",
+          "expression": "(quantity_3 / 100) * quantity_1",
+          "label": "Compute the discount value applied to each discounted unit.",
+          "output_unit": "dollars",
+          "confidence": 0.0
+        },
+        {
+          "step_id": "step_3_total_discount",
+          "step_index": 3,
+          "operation": "multiply",
+          "input_refs": [
+            "excess_quantity",
+            "discount_per_unit"
+          ],
+          "output_ref": "total_discount",
+          "expression": "excess_quantity * discount_per_unit",
+          "label": "Multiply discounted units by the discount per unit.",
+          "output_unit": "dollars",
+          "confidence": 0.0
+        },
+        {
+          "step_id": "step_4_gross_total",
+          "step_index": 4,
+          "operation": "multiply",
+          "input_refs": [
+            "quantity_2",
+            "quantity_1"
+          ],
+          "output_ref": "gross_total",
+          "expression": "quantity_2 * quantity_1",
+          "label": "Compute the total before any discount.",
+          "output_unit": "dollars",
+          "confidence": 0.0
+        },
+        {
+          "step_id": "step_5_final_total",
+          "step_index": 5,
+          "operation": "subtract",
+          "input_refs": [
+            "gross_total",
+            "total_discount"
+          ],
+          "output_ref": "how_much_did_mr_benson_pay_in_all",
+          "expression": "gross_total - total_discount",
+          "label": "Subtract the total discount from the gross total.",
+          "output_unit": "dollars",
+          "confidence": 0.0
+        }
+      ],
+      "graph_target_node_id": "how_much_did_mr_benson_pay_in_all",
+      "graph_confidence": 0.0,
+      "graph_notes": [
+        "Derivation via per-ticket price, threshold, and percentage discount."
+      ],
+      "assumptions": [
+        "Price is fixed at $40 per ticket.",
+        "Discount applies only to tickets beyond 10.",
+        "Discount is 5% for each discounted ticket."
+      ],
+      "confidence": 0.0,
+      "notes": [
+        "Structure ready for executable graph construction.",
+        "llm_formalization_attempt:1"
+      ],
+      "problem_text": "A concert ticket costs $40. Mr. Benson bought 12 tickets and received a 5% discount for every ticket bought that exceeds 10. How much did Mr. Benson pay in all?"
+    }
+  }
+]

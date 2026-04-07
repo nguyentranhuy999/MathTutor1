@@ -12,6 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 DEBUG_DIR = Path(__file__).resolve().parent
+OUTPUT_DIR = DEBUG_DIR / "outputs"
 
 import requests
 
@@ -23,18 +24,16 @@ from src.llm import LLMClient, LLMGenerationError, OpenRouterLLMClient, build_de
 from src.models import HintMode
 from src.pedagogy import build_hint_plan
 from src.runtime import build_canonical_reference
+from src.shared_input import read_answer_text, read_problem_text
 
 
-PROBLEM_TEXT = (
-    "A concert ticket costs $40. Mr. Benson bought 12 tickets and received a 5% discount "
-    "for every ticket bought that exceeds 10. How much did Mr. Benson pay in all?"
-)
-STUDENT_ANSWER = "12 * 40 = 480\n12 - 10 = 2\n5% of 40 = 2\n2 * 2 = 4\n480 - 4 = 474\nAnswer is 474."
+PROBLEM_TEXT = read_problem_text()
+STUDENT_ANSWER = read_answer_text()
 USE_LLM = True
 HINT_MODE = HintMode.NORMAL
 WRITE_OUTPUT_TO_FILE = True
-OUTPUT_PATH = DEBUG_DIR / "debug_hint_output.txt"
-RAW_LLM_OUTPUT_PATH = DEBUG_DIR / "debug_hint_llm_raw.json"
+OUTPUT_PATH = OUTPUT_DIR / "debug_hint_output.txt"
+RAW_LLM_OUTPUT_PATH = OUTPUT_DIR / "debug_hint_llm_raw.json"
 
 
 class _TeeStream:
@@ -292,6 +291,7 @@ if __name__ == "__main__":
         tee = _TeeStream(sys.stdout, buffer)
         with redirect_stdout(tee):
             raw_records = main()
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         OUTPUT_PATH.write_text(buffer.getvalue(), encoding="utf-8")
         RAW_LLM_OUTPUT_PATH.write_text(json.dumps(raw_records, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"\nSaved debug output to: {OUTPUT_PATH}")

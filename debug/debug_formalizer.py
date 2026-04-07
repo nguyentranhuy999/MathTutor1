@@ -12,23 +12,22 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 DEBUG_DIR = Path(__file__).resolve().parent
+OUTPUT_DIR = DEBUG_DIR / "outputs"
 
 from src.formalizer import formalize_problem
 from src.llm import LLMClient, LLMGenerationError, OpenRouterLLMClient, build_default_llm_client
 from src.runtime import compile_executable_plan, execute_plan, validate_problem_graph
+from src.shared_input import read_problem_text
 import requests
 
 
-# Edit these values, then run:
+# Edit input at input/problem.txt, then run:
 #   ./venv/bin/python debug/debug_formalizer.py
-PROBLEM_TEXT = (
-    "A deep-sea monster rises from the waters once every hundred years to feast on a ship and sate its hunger. Over three hundred years, it has consumed 847 people. Ships have been built larger over time, so each new ship has twice as many people as the last ship. How many people were on the ship the monster ate in the first hundred years?"
-    
-)
+PROBLEM_TEXT = read_problem_text()
 USE_LLM = True
 WRITE_OUTPUT_TO_FILE = True
-OUTPUT_PATH = DEBUG_DIR / "debug_formalizer_output.txt"
-RAW_LLM_OUTPUT_PATH = DEBUG_DIR / "debug_formalizer_llm_raw.json"
+OUTPUT_PATH = OUTPUT_DIR / "debug_formalizer_output.txt"
+RAW_LLM_OUTPUT_PATH = OUTPUT_DIR / "debug_formalizer_llm_raw.json"
 
 
 class _TeeStream:
@@ -322,6 +321,7 @@ if __name__ == "__main__":
         tee = _TeeStream(sys.stdout, buffer)
         with redirect_stdout(tee):
             raw_records = main()
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         OUTPUT_PATH.write_text(buffer.getvalue(), encoding="utf-8")
         RAW_LLM_OUTPUT_PATH.write_text(
             json.dumps(raw_records, indent=2, ensure_ascii=False),

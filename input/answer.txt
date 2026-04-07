@@ -1,0 +1,8 @@
+Let's say the first ship had x people.
+The second ship had 2x people.
+The third ship had 4x people.
+The total number of people consumed is 847, which means:
+x + 2x + 4x = 847
+7x = 847
+x = 121
+Therefore, the final answer is 121.

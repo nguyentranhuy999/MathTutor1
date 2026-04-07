@@ -1,6 +1,6 @@
 LLM Solution Graph Debug
 problem: A concert ticket costs $40. Mr. Benson bought 12 tickets and received a 5% discount for every ticket bought that exceeds 10. How much did Mr. Benson pay in all?
-llm_calls: 0
+llm_calls: 1
 final_answer: 476.0
 
 Plan steps:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -25,21 +26,61 @@ from src.models import (
     QuantitySemanticRole,
 )
 from src.runtime import build_canonical_reference
-
-PROBLEM_TEXT = (
-    "A concert ticket costs $40. Mr. Benson bought 12 tickets and received a 5% discount "
-    "for every ticket bought that exceeds 10. How much did Mr. Benson pay in all?"
+from src.shared_input import (
+    ANSWER_INPUT_PATH,
+    PROBLEM_INPUT_PATH,
 )
-STUDENT_ANSWER = "12 * 40 = 480\n12 - 10 = 2\n5% of 40 = 2\n2 * 2 = 4\n480 - 4 = 474\nAnswer is 474."
+
+DEBUG_DIR = Path(__file__).resolve().parent
 
 PROBLEM_GRAPH_SCOPE = "debug_problem_graph"
 REFERENCE_GRAPH_SCOPE = "debug_reference_graph"
 STUDENT_GRAPH_SCOPE = "debug_student_graph"
 
-ARTIFACT_DIR = Path(__file__).resolve().parent / "artifacts"
+ARTIFACT_DIR = DEBUG_DIR / "artifacts"
 PROBLEM_OUTPUT_PATH = ARTIFACT_DIR / "problem_graph.cypher"
 REFERENCE_OUTPUT_PATH = ARTIFACT_DIR / "reference_graph.cypher"
 STUDENT_OUTPUT_PATH = ARTIFACT_DIR / "student_graph.cypher"
+
+
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Export graph bai toan ra file .cypher")
+    parser.add_argument("--problem-text", help="Noi dung de bai.")
+    parser.add_argument(
+        "--problem-file",
+        default=str(PROBLEM_INPUT_PATH),
+        help=f"Duong dan file txt chua de bai (mac dinh: {PROBLEM_INPUT_PATH}).",
+    )
+    parser.add_argument("--student-answer", help="Noi dung bai lam hoc sinh.")
+    parser.add_argument(
+        "--student-file",
+        default=str(ANSWER_INPUT_PATH),
+        help=f"Duong dan file txt chua bai lam hoc sinh (mac dinh: {ANSWER_INPUT_PATH}).",
+    )
+    return parser.parse_args(argv)
+
+
+def _resolve_text(
+    inline_text: str | None,
+    file_path: str | None,
+    field_name: str,
+    inline_arg: str,
+    file_arg: str,
+) -> str:
+    if inline_text is not None and inline_text.strip():
+        return inline_text.strip()
+
+    if not file_path:
+        raise ValueError(f"Thieu {field_name}. Hay truyen {inline_arg} hoac {file_arg}.")
+
+    candidate = Path(file_path)
+    if not candidate.exists():
+        raise FileNotFoundError(f"Khong tim thay {field_name}: {file_path}")
+
+    text = candidate.read_text(encoding="utf-8").strip()
+    if not text:
+        raise ValueError(f"{field_name} trong file '{file_path}' dang rong.")
+    return text
 
 
 def _build_reference_graph(reference: CanonicalReference) -> ProblemGraph:
@@ -176,8 +217,24 @@ def _build_reference_graph(reference: CanonicalReference) -> ProblemGraph:
     )
 
 
-def main() -> None:
-    formalized = formalize_problem(PROBLEM_TEXT)
+def main(argv: list[str] | None = None) -> None:
+    args = _parse_args(argv)
+    problem_text = _resolve_text(
+        inline_text=args.problem_text,
+        file_path=args.problem_file,
+        field_name="de bai",
+        inline_arg="--problem-text",
+        file_arg="--problem-file",
+    )
+    student_answer = _resolve_text(
+        inline_text=args.student_answer,
+        file_path=args.student_file,
+        field_name="bai lam hoc sinh",
+        inline_arg="--student-answer",
+        file_arg="--student-file",
+    )
+
+    formalized = formalize_problem(problem_text)
     if formalized.problem_graph is None:
         raise RuntimeError("formalize_problem did not produce problem_graph")
 
@@ -185,7 +242,7 @@ def main() -> None:
     reference_graph = _build_reference_graph(reference)
 
     student_work = formalize_student_work(
-        STUDENT_ANSWER,
+        student_answer,
         problem=formalized,
         reference=reference,
         llm_client=None,
@@ -218,6 +275,8 @@ def main() -> None:
     print(f"Problem graph:   {PROBLEM_OUTPUT_PATH}")
     print(f"Reference graph: {REFERENCE_OUTPUT_PATH}")
     print(f"Student graph:   {STUDENT_OUTPUT_PATH}")
+    print(f"Problem text:    {problem_text}")
+    print(f"Student answer:  {student_answer}")
     print("Run inside Neo4j Browser:")
     print(f"MATCH (n:FormalizeNode {{graph_scope: '{PROBLEM_GRAPH_SCOPE}'}}) RETURN n")
     print(f"MATCH (n:FormalizeNode {{graph_scope: '{REFERENCE_GRAPH_SCOPE}'}}) RETURN n")
@@ -225,4 +284,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])
