@@ -34,12 +34,14 @@ from src.shared_input import (
 DEBUG_DIR = Path(__file__).resolve().parent
 
 PROBLEM_GRAPH_SCOPE = "debug_problem_graph"
+SUMMARY_GRAPH_SCOPE = "debug_problem_summary_graph"
 REFERENCE_GRAPH_SCOPE = "debug_reference_graph"
 STUDENT_GRAPH_SCOPE = "debug_student_graph"
 
 ARTIFACT_DIR = DEBUG_DIR / "artifacts"
 OUTPUT_DIR = DEBUG_DIR / "outputs"
 PROBLEM_OUTPUT_PATH = ARTIFACT_DIR / "problem_graph.cypher"
+SUMMARY_OUTPUT_PATH = ARTIFACT_DIR / "problem_summary_graph.cypher"
 REFERENCE_OUTPUT_PATH = ARTIFACT_DIR / "reference_graph.cypher"
 STUDENT_OUTPUT_PATH = ARTIFACT_DIR / "student_graph.cypher"
 STATUS_OUTPUT_PATH = OUTPUT_DIR / "debug_graph_export_status.txt"
@@ -347,6 +349,13 @@ def main(argv: list[str] | None = None) -> None:
             problem_text=problem_text,
             student_answer=student_answer,
         )
+        summary_graph = _build_diagnostic_graph(
+            base_graph=problem_graph,
+            stage="problem_summary",
+            error=RuntimeError("summary_graph_not_built_due_to_formalize_problem_failure"),
+            problem_text=problem_text,
+            student_answer=student_answer,
+        )
         reference_graph = _build_diagnostic_graph(
             base_graph=problem_graph,
             stage="reference",
@@ -380,6 +389,23 @@ def main(argv: list[str] | None = None) -> None:
         else:
             problem_graph = formalized.problem_graph
             status_lines.append(f"problem_graph=ok ({_graph_stats(problem_graph)})")
+
+        if formalized.problem_summary_graph is None:
+            missing_summary_graph_error = RuntimeError("formalize_problem did not produce problem_summary_graph")
+            summary_graph = _build_diagnostic_graph(
+                base_graph=problem_graph,
+                stage="problem_summary_graph_missing",
+                error=missing_summary_graph_error,
+                problem_text=problem_text,
+                student_answer=student_answer,
+            )
+            status_lines.append(
+                "problem_summary_graph=missing: "
+                f"{_compact_message(str(missing_summary_graph_error), limit=200)}"
+            )
+        else:
+            summary_graph = formalized.problem_summary_graph
+            status_lines.append(f"problem_summary_graph=ok ({_graph_stats(summary_graph)})")
 
         reference = None
         try:
@@ -428,6 +454,11 @@ def main(argv: list[str] | None = None) -> None:
         graph_scope=PROBLEM_GRAPH_SCOPE,
         clear_scope=True,
     )
+    summary_cypher = export_problem_graph_to_neo4j_cypher(
+        summary_graph,
+        graph_scope=SUMMARY_GRAPH_SCOPE,
+        clear_scope=True,
+    )
     reference_cypher = export_problem_graph_to_neo4j_cypher(
         reference_graph,
         graph_scope=REFERENCE_GRAPH_SCOPE,
@@ -440,12 +471,14 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     PROBLEM_OUTPUT_PATH.write_text(problem_cypher, encoding="utf-8")
+    SUMMARY_OUTPUT_PATH.write_text(summary_cypher, encoding="utf-8")
     REFERENCE_OUTPUT_PATH.write_text(reference_cypher, encoding="utf-8")
     STUDENT_OUTPUT_PATH.write_text(student_cypher, encoding="utf-8")
     STATUS_OUTPUT_PATH.write_text("\n".join(status_lines) + "\n", encoding="utf-8")
 
     print("Graphs exported (partial mode)")
     print(f"Problem graph:   {PROBLEM_OUTPUT_PATH}")
+    print(f"Summary graph:   {SUMMARY_OUTPUT_PATH}")
     print(f"Reference graph: {REFERENCE_OUTPUT_PATH}")
     print(f"Student graph:   {STUDENT_OUTPUT_PATH}")
     print(f"Status file:     {STATUS_OUTPUT_PATH}")
@@ -455,6 +488,7 @@ def main(argv: list[str] | None = None) -> None:
         print(f"- {line}")
     print("Run inside Neo4j Browser:")
     print(f"MATCH (n:FormalizeNode {{graph_scope: '{PROBLEM_GRAPH_SCOPE}'}}) RETURN n")
+    print(f"MATCH (n:FormalizeNode {{graph_scope: '{SUMMARY_GRAPH_SCOPE}'}}) RETURN n")
     print(f"MATCH (n:FormalizeNode {{graph_scope: '{REFERENCE_GRAPH_SCOPE}'}}) RETURN n")
     print(f"MATCH (n:FormalizeNode {{graph_scope: '{STUDENT_GRAPH_SCOPE}'}}) RETURN n")
 

@@ -54,6 +54,16 @@ class ProblemGraphEdgeType(str, Enum):
     ENTITY_HAS_QUANTITY = "entity_has_quantity"
     TARGETS_VALUE = "targets_value"
     DESCRIBES_ENTITY = "describes_entity"
+    SEMANTIC_RELATION = "semantic_relation"
+    VERB_RELATION = "verb_relation"
+    RISE_FROM = "rise_from"
+    OCCURS_EVERY = "occurs_every"
+    DURING_PERIOD = "during_period"
+    CONSUME = "consume"
+    BUILT_OVER_TIME = "built_over_time"
+    MULTIPLIER_OF = "multiplier_of"
+    ATE = "ate"
+    HAS_ATTRIBUTE = "has_attribute"
     INPUT_TO_OPERATION = "input_to_operation"
     OUTPUT_FROM_OPERATION = "output_from_operation"
 
@@ -237,6 +247,7 @@ class FormalizedProblem(BaseModel):
     entities: List[ProblemEntity] = Field(default_factory=list)
     target: Optional[TargetSpec] = Field(default=None)
     relation_candidates: List[RelationCandidate] = Field(default_factory=list)
+    problem_summary_graph: Optional[ProblemGraph] = Field(default=None)
     problem_graph: Optional[ProblemGraph] = Field(default=None)
     assumptions: List[str] = Field(default_factory=list)
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
@@ -280,16 +291,22 @@ class FormalizedProblem(BaseModel):
             if relation.target_variable is not None and not relation.target_variable.strip():
                 raise ValueError("RelationCandidate.target_variable must not be empty when provided")
 
-        if self.problem_graph is not None:
-            if self.target is not None and self.problem_graph.target_node_id is not None:
-                if self.problem_graph.target_node_id != self.target.target_variable:
-                    raise ValueError("ProblemGraph.target_node_id must match TargetSpec.target_variable")
+        def _validate_graph_refs(graph: ProblemGraph, graph_label: str) -> None:
+            if self.target is not None and graph.target_node_id is not None:
+                if graph.target_node_id != self.target.target_variable:
+                    raise ValueError(f"{graph_label}.target_node_id must match TargetSpec.target_variable")
 
-            for node in self.problem_graph.nodes:
+            for node in graph.nodes:
                 if node.quantity_id is not None and node.quantity_id not in quantity_ids:
-                    raise ValueError(f"ProblemGraph node '{node.node_id}' references unknown quantity_id '{node.quantity_id}'")
+                    raise ValueError(f"{graph_label} node '{node.node_id}' references unknown quantity_id '{node.quantity_id}'")
                 if node.entity_id is not None and node.entity_id not in entity_ids:
-                    raise ValueError(f"ProblemGraph node '{node.node_id}' references unknown entity_id '{node.entity_id}'")
+                    raise ValueError(f"{graph_label} node '{node.node_id}' references unknown entity_id '{node.entity_id}'")
+
+        if self.problem_summary_graph is not None:
+            _validate_graph_refs(self.problem_summary_graph, "ProblemSummaryGraph")
+
+        if self.problem_graph is not None:
+            _validate_graph_refs(self.problem_graph, "ProblemGraph")
 
         return self
 

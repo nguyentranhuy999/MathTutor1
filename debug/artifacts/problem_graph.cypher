@@ -3,9 +3,40 @@ CREATE CONSTRAINT formalize_node_scope_id IF NOT EXISTS
 FOR (n:FormalizeNode) REQUIRE (n.graph_scope, n.node_id) IS UNIQUE;
 MATCH (n:FormalizeNode {graph_scope: 'debug_problem_graph'})
 DETACH DELETE n;
+MERGE (n:FormalizeNode:INTERMEDIATE {graph_scope: 'debug_problem_graph', node_id: 'first_term_value'})
+SET n.node_type = 'intermediate', n.label = 'first_term_value', n.value = null, n.unit = 'people', n.quantity_id = null, n.entity_id = null, n.target_variable = null, n.semantic_role = null, n.operation = null, n.expression = null, n.step_id = null, n.step_index = null, n.confidence = 0.88, n.provenance = 'heuristic', n.notes = [];
 MERGE (n:FormalizeNode:TARGET {graph_scope: 'debug_problem_graph', node_id: 'how_many_people_were_on_the_ship_the_monster_ate_in_the_first_hundred_years'})
 SET n.node_type = 'target', n.label = 'How many people were on the ship the monster ate in the first hundred years?', n.value = null, n.unit = 'people', n.quantity_id = null, n.entity_id = null, n.target_variable = 'how_many_people_were_on_the_ship_the_monster_ate_in_the_first_hundred_years', n.semantic_role = null, n.operation = null, n.expression = null, n.step_id = null, n.step_index = null, n.confidence = 0.85, n.provenance = 'problem_text', n.notes = [];
+MERGE (n:FormalizeNode:OPERATION {graph_scope: 'debug_problem_graph', node_id: 'op_step_1_progression_multiplier'})
+SET n.node_type = 'operation', n.label = 'Build the geometric-series multiplier sum from progression cues.', n.value = null, n.unit = null, n.quantity_id = null, n.entity_id = null, n.target_variable = null, n.semantic_role = null, n.operation = 'add', n.expression = '1 + 2 + 4', n.step_id = 'step_1_progression_multiplier', n.step_index = 1, n.confidence = 0.86, n.provenance = 'heuristic', n.notes = [];
+MERGE (n:FormalizeNode:OPERATION {graph_scope: 'debug_problem_graph', node_id: 'op_step_2_first_term'})
+SET n.node_type = 'operation', n.label = 'Compute the first term from total and geometric multiplier sum.', n.value = null, n.unit = null, n.quantity_id = null, n.entity_id = null, n.target_variable = null, n.semantic_role = null, n.operation = 'divide', n.expression = 'quantity_1 / progression_multiplier_sum', n.step_id = 'step_2_first_term', n.step_index = 2, n.confidence = 0.88, n.provenance = 'heuristic', n.notes = [];
+MERGE (n:FormalizeNode:OPERATION {graph_scope: 'debug_problem_graph', node_id: 'op_step_3_target_first_term'})
+SET n.node_type = 'operation', n.label = 'Map the first progression term to the requested target.', n.value = null, n.unit = null, n.quantity_id = null, n.entity_id = null, n.target_variable = null, n.semantic_role = null, n.operation = 'derive', n.expression = 'first_term_value', n.step_id = 'step_3_target_first_term', n.step_index = 3, n.confidence = 0.9, n.provenance = 'heuristic', n.notes = [];
+MERGE (n:FormalizeNode:INTERMEDIATE {graph_scope: 'debug_problem_graph', node_id: 'progression_multiplier_sum'})
+SET n.node_type = 'intermediate', n.label = 'progression_multiplier_sum', n.value = null, n.unit = null, n.quantity_id = null, n.entity_id = null, n.target_variable = null, n.semantic_role = null, n.operation = null, n.expression = null, n.step_id = null, n.step_index = null, n.confidence = 0.86, n.provenance = 'heuristic', n.notes = [];
 MERGE (n:FormalizeNode:QUANTITY {graph_scope: 'debug_problem_graph', node_id: 'quantity_1'})
 SET n.node_type = 'quantity', n.label = '847', n.value = 847.0, n.unit = 'people ships', n.quantity_id = 'quantity_1', n.entity_id = null, n.target_variable = null, n.semantic_role = 'base', n.operation = null, n.expression = null, n.step_id = null, n.step_index = null, n.confidence = 0.95, n.provenance = 'problem_text', n.notes = ['context=d years, it has consumed 847 people. Ships have been built larg'];
+MATCH (src:FormalizeNode {graph_scope: 'debug_problem_graph', node_id: 'first_term_value'}), (dst:FormalizeNode {graph_scope: 'debug_problem_graph', node_id: 'op_step_3_target_first_term'})
+MERGE (src)-[r:INPUT_TO_OPERATION {graph_scope: 'debug_problem_graph', edge_id: 'edge_first_term_value_to_op_step_3_target_first_term_0'}]->(dst)
+SET r.edge_type = 'input_to_operation', r.position = 0, r.confidence = 0.9, r.provenance = 'heuristic', r.notes = [];
+MATCH (src:FormalizeNode {graph_scope: 'debug_problem_graph', node_id: 'op_step_1_progression_multiplier'}), (dst:FormalizeNode {graph_scope: 'debug_problem_graph', node_id: 'progression_multiplier_sum'})
+MERGE (src)-[r:OUTPUT_FROM_OPERATION {graph_scope: 'debug_problem_graph', edge_id: 'edge_op_step_1_progression_multiplier_to_progression_multiplier_sum'}]->(dst)
+SET r.edge_type = 'output_from_operation', r.position = null, r.confidence = 0.86, r.provenance = 'heuristic', r.notes = [];
+MATCH (src:FormalizeNode {graph_scope: 'debug_problem_graph', node_id: 'op_step_2_first_term'}), (dst:FormalizeNode {graph_scope: 'debug_problem_graph', node_id: 'first_term_value'})
+MERGE (src)-[r:OUTPUT_FROM_OPERATION {graph_scope: 'debug_problem_graph', edge_id: 'edge_op_step_2_first_term_to_first_term_value'}]->(dst)
+SET r.edge_type = 'output_from_operation', r.position = null, r.confidence = 0.88, r.provenance = 'heuristic', r.notes = [];
+MATCH (src:FormalizeNode {graph_scope: 'debug_problem_graph', node_id: 'op_step_3_target_first_term'}), (dst:FormalizeNode {graph_scope: 'debug_problem_graph', node_id: 'how_many_people_were_on_the_ship_the_monster_ate_in_the_first_hundred_years'})
+MERGE (src)-[r:OUTPUT_FROM_OPERATION {graph_scope: 'debug_problem_graph', edge_id: 'edge_op_step_3_target_first_term_to_how_many_people_were_on_the_ship_the_monster_ate_in_the_first_hundred_years'}]->(dst)
+SET r.edge_type = 'output_from_operation', r.position = null, r.confidence = 0.9, r.provenance = 'heuristic', r.notes = [];
+MATCH (src:FormalizeNode {graph_scope: 'debug_problem_graph', node_id: 'progression_multiplier_sum'}), (dst:FormalizeNode {graph_scope: 'debug_problem_graph', node_id: 'op_step_2_first_term'})
+MERGE (src)-[r:INPUT_TO_OPERATION {graph_scope: 'debug_problem_graph', edge_id: 'edge_progression_multiplier_sum_to_op_step_2_first_term_1'}]->(dst)
+SET r.edge_type = 'input_to_operation', r.position = 1, r.confidence = 0.88, r.provenance = 'heuristic', r.notes = [];
+MATCH (src:FormalizeNode {graph_scope: 'debug_problem_graph', node_id: 'quantity_1'}), (dst:FormalizeNode {graph_scope: 'debug_problem_graph', node_id: 'op_step_1_progression_multiplier'})
+MERGE (src)-[r:INPUT_TO_OPERATION {graph_scope: 'debug_problem_graph', edge_id: 'edge_quantity_1_to_op_step_1_progression_multiplier_0'}]->(dst)
+SET r.edge_type = 'input_to_operation', r.position = 0, r.confidence = 0.86, r.provenance = 'heuristic', r.notes = [];
+MATCH (src:FormalizeNode {graph_scope: 'debug_problem_graph', node_id: 'quantity_1'}), (dst:FormalizeNode {graph_scope: 'debug_problem_graph', node_id: 'op_step_2_first_term'})
+MERGE (src)-[r:INPUT_TO_OPERATION {graph_scope: 'debug_problem_graph', edge_id: 'edge_quantity_1_to_op_step_2_first_term_0'}]->(dst)
+SET r.edge_type = 'input_to_operation', r.position = 0, r.confidence = 0.88, r.provenance = 'heuristic', r.notes = [];
 MATCH (target:FormalizeNode {graph_scope: 'debug_problem_graph', node_id: 'how_many_people_were_on_the_ship_the_monster_ate_in_the_first_hundred_years'})
-SET target.is_target = true, target.graph_confidence = 0.75, target.graph_provenance = 'heuristic', target.graph_notes = ['graph_rate_relation_missing_components'];
+SET target.is_target = true, target.graph_confidence = 0.9, target.graph_provenance = 'heuristic', target.graph_notes = ['graph_built_from_progression_relation:ratio=2,terms=3'];

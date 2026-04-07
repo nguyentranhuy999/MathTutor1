@@ -1,7 +1,7 @@
 """Builders for heuristic drafts and compact-skeleton reconstruction."""
 from __future__ import annotations
 
-from src.formalizer.problem_graph import build_problem_graph
+from src.formalizer.problem_graph import build_problem_graph, build_problem_summary_graph
 from src.formalizer.problem_formalizer_extractors import (
     _attach_target_quantity,
     _build_relation_candidates,
@@ -403,12 +403,15 @@ def _build_formalized_problem_from_skeleton(
     comparison_notes = _compare_with_heuristic_notes(problem, heuristic_problem)
     if comparison_notes:
         problem = problem.model_copy(update={"notes": list(problem.notes) + comparison_notes})
+    summary_graph = build_problem_summary_graph(problem)
+    problem = problem.model_copy(update={"problem_summary_graph": summary_graph})
     return problem
 
 
-def _attach_problem_graph(problem: FormalizedProblem) -> FormalizedProblem:
+def _attach_problem_graphs(problem: FormalizedProblem) -> FormalizedProblem:
+    summary_graph = build_problem_summary_graph(problem)
     graph = build_problem_graph(problem)
-    return problem.model_copy(update={"problem_graph": graph})
+    return problem.model_copy(update={"problem_summary_graph": summary_graph, "problem_graph": graph})
 
 
 def _heuristic_formalize_problem(problem_text: str) -> FormalizedProblem:
@@ -439,4 +442,4 @@ def _heuristic_formalize_problem(problem_text: str) -> FormalizedProblem:
         provenance=ProvenanceSource.HEURISTIC,
         notes=notes,
     )
-    return _attach_problem_graph(validate_formalized_problem(problem))
+    return _attach_problem_graphs(validate_formalized_problem(problem))

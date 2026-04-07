@@ -1,6 +1,6 @@
 """Problem formalizer package."""
 
-from src.formalizer.problem_graph import build_problem_graph
+from src.formalizer.problem_graph import build_problem_graph, build_problem_summary_graph
 from src.formalizer.problem_formalizer import formalize_problem, validate_formalized_problem
 from src.formalizer.neo4j_visualizer import export_problem_graph_to_neo4j_cypher
 from src.formalizer.reference_trace import (
@@ -14,6 +14,7 @@ from src.formalizer.student_work import formalize_student_work
 
 __all__ = [
     "build_problem_graph",
+    "build_problem_summary_graph",
     "build_reference_trace",
     "build_student_work_graph",
     "build_student_partial_trace",

@@ -1,5 +1,12 @@
 from src.formalizer import build_reference_trace, formalize_problem
-from src.models import OperationType, ProblemGraphNodeType, ProvenanceSource, QuantitySemanticRole, RelationType
+from src.models import (
+    OperationType,
+    ProblemGraphEdgeType,
+    ProblemGraphNodeType,
+    ProvenanceSource,
+    QuantitySemanticRole,
+    RelationType,
+)
 
 
 def test_formalize_problem_extracts_target_quantities_and_relation():
@@ -24,6 +31,18 @@ def test_formalize_problem_extracts_target_quantities_and_relation():
     operation_nodes = [node for node in formalized.problem_graph.nodes if node.node_type == ProblemGraphNodeType.OPERATION]
     assert len(operation_nodes) == 5
     assert operation_nodes[0].step_id == "step_1_excess_quantity"
+    assert formalized.problem_summary_graph is not None
+    assert formalized.problem_summary_graph.target_node_id == formalized.target.target_variable
+    summary_operation_nodes = [
+        node
+        for node in formalized.problem_summary_graph.nodes
+        if node.node_type == ProblemGraphNodeType.OPERATION
+    ]
+    assert len(summary_operation_nodes) == 0
+    assert any(
+        edge.edge_type == ProblemGraphEdgeType.SEMANTIC_RELATION
+        for edge in formalized.problem_summary_graph.edges
+    )
 
 
 def test_formalize_problem_extracts_named_entities():
