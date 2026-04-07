@@ -10,6 +10,8 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+DEBUG_DIR = Path(__file__).resolve().parent
+ARTIFACT_DIR = DEBUG_DIR / "artifacts"
 
 from src.formalizer import export_problem_graph_to_neo4j_cypher, formalize_problem
 from src.llm import LLMClient, build_default_llm_client
@@ -20,9 +22,9 @@ PROBLEM_TEXT = (
     "for every ticket bought that exceeds 10. How much did Mr. Benson pay in all?"
 )
 GRAPH_SCOPE = "llm_solution_graph"
-RAW_LLM_PATH = Path("debug_llm_solution_graph_llm_raw.json")
-SUMMARY_PATH = Path("debug_llm_solution_graph_output.txt")
-CYPHER_PATH = Path("artifacts/llm_solution_graph.cypher")
+RAW_LLM_PATH = DEBUG_DIR / "debug_llm_solution_graph_llm_raw.json"
+SUMMARY_PATH = DEBUG_DIR / "debug_llm_solution_graph_output.txt"
+CYPHER_PATH = ARTIFACT_DIR / "llm_solution_graph.cypher"
 
 
 class RecordingLLMClient:

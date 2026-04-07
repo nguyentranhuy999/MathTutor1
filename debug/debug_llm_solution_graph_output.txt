@@ -1,0 +1,16 @@
+LLM Solution Graph Debug
+problem: A concert ticket costs $40. Mr. Benson bought 12 tickets and received a 5% discount for every ticket bought that exceeds 10. How much did Mr. Benson pay in all?
+llm_calls: 0
+final_answer: 476.0
+
+Plan steps:
+- step_1_excess_quantity: max(quantity_2 - quantity_4, 0) -> excess_quantity
+- step_2_discount_per_unit: (quantity_3 / 100) * quantity_1 -> discount_per_unit
+- step_3_total_discount: excess_quantity * discount_per_unit -> total_discount
+- step_4_gross_total: quantity_2 * quantity_1 -> gross_total
+- step_5_final_total: gross_total - total_discount -> how_much_did_mr_benson_pay_in_all
+
+Cypher file: /Users/nguyentranhuy/MathTutor1/debug/artifacts/llm_solution_graph.cypher
+LLM raw file: /Users/nguyentranhuy/MathTutor1/debug/debug_llm_solution_graph_llm_raw.json
+Run inside Neo4j Browser:
+MATCH (n:FormalizeNode {graph_scope: 'llm_solution_graph'}) RETURN n
