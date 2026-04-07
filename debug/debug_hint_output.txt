@@ -65,7 +65,7 @@ LLM client available = True
 
 ==================== Final Hint ====================
 {
-  "hint_text": "Carefully recompute the final total: first add all item prices to get the gross total, then subtract the total discount from it. Double-check that you’ve included every item and that the subtraction uses the correct gross amount.",
+  "hint_text": "Recheck the arithmetic in the step you just computed. Write that calculation again carefully before you move on.",
   "hint_level": "next_step",
   "hint_mode": "normal",
   "verification_passed": true,
@@ -78,14 +78,28 @@ LLM client available = True
 
 Attempt 1
 Task: hint_generator
-Status: success
-{
-  "hint_text": "Carefully recompute the final total: first add all item prices to get the gross total, then subtract the total discount from it. Double-check that you’ve included every item and that the subtraction uses the correct gross amount."
-}
+Status: error
+System prompt sent to model:
+You are a math tutor. Return only a JSON object with one field: hint_text. Write at most two sentences. Follow the pedagogy plan exactly. Do not reveal any forbidden content.
+User prompt sent to model:
+Problem target:
+How much did Mr. Benson pay in all
+
+Diagnosis:
+{"diagnosis_label": "arithmetic_error", "subtype": "intermediate_calculation_error", "localization": "intermediate_step", "target_step_id": "step_5_final_total", "summary": "The student appears to follow the right target but makes an incorrect intermediate calculation.", "supporting_evidence_types": ["final_answer_mismatch", "step_value_mismatch"], "confidence": 0.9583333333333334, "notes": ["student_mode=partial_trace", "diagnosis_rationale:step_value_mismatch", "diagnosis_top_hypothesis=arithmetic_error:5.00", "diagnosis_runner_up=unknown_error:3.50", "diagnosis_margin=1.50"]}
+
+Pedagogy plan:
+{"diagnosis_label": "arithmetic_error", "hint_level": "next_step", "teacher_move": "recompute_step", "target_step_id": "step_5_final_total", "disclosure_budget": 1, "focus_points": ["recompute the arithmetic carefully", "check the calculation around how_much_did_mr_benson_pay_in_all", "Subtract the total discount from the gross total.", "target: How much did Mr. Benson pay in all?"], "must_not_reveal": ["final answer", "476", "how_much_did_mr_benson_pay_in_all"], "rationale": "The student appears to be aiming at the right quantity and mainly needs support checking the computation.", "confidence": 0.97}
+
+Reference answer (must not be revealed): 476
+Hint mode: normal
+
+Return JSON like {"hint_text": "..."}.
+Error: hint_generator request failed: HTTPSConnectionPool(host='openrouter.ai', port=443): Max retries exceeded with url: /api/v1/chat/completions (Caused by NameResolutionError("HTTPSConnection(host='openrouter.ai', port=443): Failed to resolve 'openrouter.ai' ([Errno 8] nodename nor servname provided, or not known)"))
 
 ==================== Summary ====================
 Diagnosis label: arithmetic_error
 Teacher move: recompute_step
 Deterministic verified: True
 Final verified: True
-Hint text: Carefully recompute the final total: first add all item prices to get the gross total, then subtract the total discount from it. Double-check that you’ve included every item and that the subtraction uses the correct gross amount.
+Hint text: Recheck the arithmetic in the step you just computed. Write that calculation again carefully before you move on.

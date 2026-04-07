@@ -1,4 +1,4 @@
-from debug_llm_solution_graph import _build_graph_steps_cypher, _extract_graph_steps
+from debug.debug_llm_solution_graph import _build_graph_steps_cypher, _extract_graph_steps
 
 
 def test_extract_graph_steps_from_problem_formalizer_record():

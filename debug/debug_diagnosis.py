@@ -8,6 +8,11 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from typing import Any
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+DEBUG_DIR = Path(__file__).resolve().parent
+
 import requests
 
 from src.diagnosis import diagnose
@@ -24,8 +29,8 @@ PROBLEM_TEXT = (
 STUDENT_ANSWER = "12 * 40 = 480\n12 - 10 = 2\n5% of 40 = 2\n2 * 2 = 4\n480 - 4 = 474\nAnswer is 474."
 USE_LLM = True
 WRITE_OUTPUT_TO_FILE = True
-OUTPUT_PATH = Path("debug_diagnosis_output.txt")
-RAW_LLM_OUTPUT_PATH = Path("debug_diagnosis_llm_raw.json")
+OUTPUT_PATH = DEBUG_DIR / "debug_diagnosis_output.txt"
+RAW_LLM_OUTPUT_PATH = DEBUG_DIR / "debug_diagnosis_llm_raw.json"
 
 
 class _TeeStream:

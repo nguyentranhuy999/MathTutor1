@@ -8,6 +8,11 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from typing import Any
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+DEBUG_DIR = Path(__file__).resolve().parent
+
 import requests
 
 from src.formalizer import formalize_problem, formalize_student_work
@@ -16,7 +21,7 @@ from src.runtime import build_canonical_reference
 
 
 # Edit these values, then run:
-#   .\venv\Scripts\python.exe debug_student_work.py
+#   ./venv/bin/python debug/debug_student_work.py
 PROBLEM_TEXT = (
     "A deep-sea monster rises from the waters once every hundred years to feast on a ship and sate its hunger. Over three hundred years, it has consumed 847 people. Ships have been built larger over time, so each new ship has twice as many people as the last ship. How many people were on the ship the monster ate in the first hundred years?"
     
@@ -25,8 +30,8 @@ STUDENT_ANSWER = "Let the first ship have x people.Then the next two ships had 2
 
 USE_LLM = True
 WRITE_OUTPUT_TO_FILE = True
-OUTPUT_PATH = Path("debug_student_work_output.txt")
-RAW_LLM_OUTPUT_PATH = Path("debug_student_work_llm_raw.json")
+OUTPUT_PATH = DEBUG_DIR / "debug_student_work_output.txt"
+RAW_LLM_OUTPUT_PATH = DEBUG_DIR / "debug_student_work_llm_raw.json"
 
 
 class _TeeStream:
