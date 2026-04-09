@@ -8,6 +8,7 @@ from src.formalizer.problem_formalizer_extractors import (
     _build_target_spec,
     _extract_entities,
     _extract_quantities,
+    _extract_semantic_triples,
     _extract_target_text,
     _link_quantities_to_entities,
 )
@@ -29,6 +30,7 @@ from src.models import (
     QuantityAnnotation,
     RelationCandidate,
     RelationType,
+    SemanticTriple,
     TargetSpec,
     TraceOperation,
 )
@@ -82,6 +84,23 @@ def _build_compact_draft(heuristic_problem: FormalizedProblem) -> dict:
                 "rationale": relation.rationale,
             }
             for relation in heuristic_problem.relation_candidates
+        ],
+        "semantic_triples": [
+            {
+                "triple_id": triple.triple_id,
+                "subject_text": triple.subject_text,
+                "predicate_text": triple.predicate_text,
+                "object_text": triple.object_text,
+                "subject_node_id": triple.subject_node_id,
+                "object_node_id": triple.object_node_id,
+                "edge_type": triple.edge_type.value,
+                "sentence_index": triple.sentence_index,
+                "clause_index": triple.clause_index,
+                "confidence": triple.confidence,
+                "provenance": triple.provenance.value,
+                "notes": list(triple.notes),
+            }
+            for triple in heuristic_problem.semantic_triples
         ],
         "graph_steps": [
             {
@@ -376,6 +395,35 @@ def _build_formalized_problem_from_skeleton(
     else:
         relation_candidates = list(heuristic_problem.relation_candidates)
 
+    semantic_triples: list[SemanticTriple] = list(heuristic_problem.semantic_triples)
+    raw_triples = payload.get("semantic_triples")
+    if isinstance(raw_triples, list) and raw_triples:
+        rebuilt_triples: list[SemanticTriple] = []
+        for index, raw_triple in enumerate(raw_triples, start=1):
+            if not isinstance(raw_triple, dict):
+                continue
+            triple_payload = {
+                "triple_id": raw_triple.get("triple_id") or f"triple_{index}",
+                "subject_text": raw_triple.get("subject_text") or "",
+                "predicate_text": raw_triple.get("predicate_text") or "",
+                "object_text": raw_triple.get("object_text"),
+                "subject_node_id": raw_triple.get("subject_node_id"),
+                "object_node_id": raw_triple.get("object_node_id"),
+                "edge_type": raw_triple.get("edge_type", ProblemGraphEdgeType.VERB_RELATION.value),
+                "sentence_index": raw_triple.get("sentence_index"),
+                "clause_index": raw_triple.get("clause_index"),
+                "confidence": raw_triple.get("confidence", 0.68),
+                "provenance": raw_triple.get("provenance", ProvenanceSource.LLM.value),
+                "notes": _coerce_list_of_strings(raw_triple.get("notes")),
+            }
+            try:
+                rebuilt_triples.append(SemanticTriple.model_validate(triple_payload))
+            except ValueError as exc:
+                notes.append(f"llm_semantic_triple_invalid:{index}:{exc}")
+        if rebuilt_triples:
+            semantic_triples = rebuilt_triples
+            notes.append(f"llm_semantic_triples_applied={len(semantic_triples)}")
+
     graph_steps = payload.get("graph_steps", [])
     if not isinstance(graph_steps, list):
         graph_steps = []
@@ -385,6 +433,7 @@ def _build_formalized_problem_from_skeleton(
         entities=entities,
         target=target,
         relation_candidates=relation_candidates,
+        semantic_triples=semantic_triples,
         assumptions=_coerce_list_of_strings(payload.get("assumptions")),
         confidence=float(payload.get("confidence", heuristic_problem.confidence) or heuristic_problem.confidence),
         provenance=ProvenanceSource.LLM,
@@ -423,12 +472,17 @@ def _heuristic_formalize_problem(problem_text: str) -> FormalizedProblem:
     target = _build_target_spec(cleaned_text, target_text)
     target = _attach_target_quantity(target, quantities)
     relation_candidates, relation_notes = _build_relation_candidates(cleaned_text, target, quantities)
+    semantic_triples = _extract_semantic_triples(cleaned_text, target, entities, quantities)
 
     notes = [f"quantities_extracted={len(quantities)}"]
     if entities:
         notes.append(f"entities_extracted={len(entities)}")
     if target_text:
         notes.append("target_extracted")
+    notes.append(f"semantic_triples_extracted={len(semantic_triples)}")
+    notes.append("hybrid_layer1_structured_extraction_done")
+    notes.append("hybrid_layer2_semantic_triples_done")
+    notes.append("hybrid_layer3_llm_refinement_skipped")
     notes.extend(relation_notes)
 
     problem = FormalizedProblem(
@@ -437,9 +491,11 @@ def _heuristic_formalize_problem(problem_text: str) -> FormalizedProblem:
         entities=entities,
         target=target,
         relation_candidates=relation_candidates,
+        semantic_triples=semantic_triples,
         assumptions=[],
         confidence=0.0,
         provenance=ProvenanceSource.HEURISTIC,
         notes=notes,
     )
-    return _attach_problem_graphs(validate_formalized_problem(problem))
+    formalized = _attach_problem_graphs(validate_formalized_problem(problem))
+    return formalized.model_copy(update={"notes": list(formalized.notes) + ["hybrid_layer4_graph_projection_done"]})

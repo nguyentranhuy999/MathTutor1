@@ -31,6 +31,9 @@ def test_formalize_problem_extracts_target_quantities_and_relation():
     operation_nodes = [node for node in formalized.problem_graph.nodes if node.node_type == ProblemGraphNodeType.OPERATION]
     assert len(operation_nodes) == 5
     assert operation_nodes[0].step_id == "step_1_excess_quantity"
+    assert len(formalized.semantic_triples) > 0
+    assert any(note.startswith("hybrid_layer1_") for note in formalized.notes)
+    assert any(note.startswith("hybrid_layer4_") for note in formalized.notes)
     assert formalized.problem_summary_graph is not None
     assert formalized.problem_summary_graph.target_node_id == formalized.target.target_variable
     summary_operation_nodes = [
@@ -43,6 +46,23 @@ def test_formalize_problem_extracts_target_quantities_and_relation():
         edge.edge_type == ProblemGraphEdgeType.SEMANTIC_RELATION
         for edge in formalized.problem_summary_graph.edges
     )
+
+
+def test_formalize_problem_extracts_semantic_triples_for_progression_story():
+    problem = (
+        "A deep-sea monster rises from the waters once every hundred years to feast on a ship. "
+        "Over three hundred years, it has consumed 847 people. "
+        "Each new ship has twice as many people as the last ship. "
+        "How many people were on the ship the monster ate in the first hundred years?"
+    )
+    formalized = formalize_problem(problem)
+
+    assert len(formalized.semantic_triples) >= 4
+    assert any(triple.edge_type == ProblemGraphEdgeType.RISE_FROM for triple in formalized.semantic_triples)
+    assert any(triple.edge_type == ProblemGraphEdgeType.OCCURS_EVERY for triple in formalized.semantic_triples)
+    assert any(triple.edge_type == ProblemGraphEdgeType.MULTIPLIER_OF for triple in formalized.semantic_triples)
+    assert formalized.problem_summary_graph is not None
+    assert any(note.startswith("summary_semantic_triples_used=") for note in formalized.problem_summary_graph.notes)
 
 
 def test_formalize_problem_extracts_named_entities():

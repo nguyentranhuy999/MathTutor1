@@ -14,6 +14,7 @@ from src.models import (
     QuantityAnnotation,
     QuantitySemanticRole,
     RelationType,
+    SemanticTriple,
     TraceOperation,
 )
 
@@ -713,6 +714,14 @@ def _add_summary_semantic_edge(
 ) -> bool:
     if source_node_id == target_node_id:
         return False
+    for existing_edge in edges:
+        if (
+            existing_edge.source_node_id == source_node_id
+            and existing_edge.target_node_id == target_node_id
+            and existing_edge.edge_type == edge_type
+            and existing_edge.position == position
+        ):
+            return False
 
     edge_id = edge_seed
     suffix = 2
@@ -735,6 +744,58 @@ def _add_summary_semantic_edge(
         ),
     )
     return True
+
+
+def _resolve_summary_triple_node(
+    *,
+    node_id_hint: str | None,
+    text_hint: str | None,
+    target_ref: str | None,
+    problem: FormalizedProblem,
+    nodes: list[ProblemGraphNode],
+    seen_node_ids: set[str],
+    concept_by_norm: dict[str, str],
+) -> str | None:
+    if node_id_hint is not None and node_id_hint in seen_node_ids:
+        return node_id_hint
+
+    if node_id_hint is not None and node_id_hint.startswith("concept_"):
+        normalized = _normalize_summary_phrase(text_hint or node_id_hint[len("concept_"):].replace("_", " "))
+        if normalized:
+            existing = concept_by_norm.get(normalized)
+            if existing is not None:
+                return existing
+            node_id = node_id_hint
+            if node_id in seen_node_ids:
+                return node_id
+            _add_node(
+                nodes,
+                seen_node_ids,
+                ProblemGraphNode(
+                    node_id=node_id,
+                    node_type=ProblemGraphNodeType.ENTITY,
+                    label=normalized,
+                    confidence=0.62,
+                    provenance=ProvenanceSource.HEURISTIC,
+                    notes=["summary_concept"],
+                ),
+            )
+            concept_by_norm[normalized] = node_id
+            return node_id
+
+    if target_ref is not None and node_id_hint == target_ref:
+        return target_ref
+
+    phrase = text_hint or node_id_hint or ""
+    return _resolve_summary_phrase_node(
+        phrase=phrase,
+        fallback_node_id=None,
+        target_ref=target_ref,
+        problem=problem,
+        nodes=nodes,
+        seen_node_ids=seen_node_ids,
+        concept_by_norm=concept_by_norm,
+    )
 
 
 def _add_node(
@@ -1248,84 +1309,118 @@ def build_problem_summary_graph(problem: FormalizedProblem) -> ProblemGraph:
     relation_edge_count = 0
     sentence_semantic_edges = 0
     concept_by_norm: dict[str, str] = {}
-    previous_subject_node_id: str | None = None
-
-    sentences = _split_sentences_with_offsets(problem.problem_text)
-    quantities_by_sentence: dict[int, list[QuantityAnnotation]] = {}
-    for quantity in problem.quantities:
-        sentence_index = _quantity_sentence_index(quantity, sentences)
-        if sentence_index is None:
-            continue
-        quantities_by_sentence.setdefault(sentence_index, []).append(quantity)
-
-    for sentence_index, (sentence, _, _) in enumerate(sentences):
-        clauses = _split_summary_clauses(sentence)
-        for clause_index, clause in enumerate(clauses):
-            cue = _find_summary_relation_cue(clause)
-            subject_node_id: str | None = None
-            object_node_id: str | None = None
-
-            if cue is None:
+    if problem.semantic_triples:
+        triples: list[SemanticTriple] = sorted(
+            problem.semantic_triples,
+            key=lambda triple: (
+                triple.sentence_index if triple.sentence_index is not None else -1,
+                triple.clause_index if triple.clause_index is not None else -1,
+                triple.triple_id,
+            ),
+        )
+        for triple in triples:
+            subject_node_id = _resolve_summary_triple_node(
+                node_id_hint=triple.subject_node_id,
+                text_hint=triple.subject_text,
+                target_ref=target_ref,
+                problem=problem,
+                nodes=nodes,
+                seen_node_ids=seen_node_ids,
+                concept_by_norm=concept_by_norm,
+            )
+            object_node_id = _resolve_summary_triple_node(
+                node_id_hint=triple.object_node_id,
+                text_hint=triple.object_text,
+                target_ref=target_ref,
+                problem=problem,
+                nodes=nodes,
+                seen_node_ids=seen_node_ids,
+                concept_by_norm=concept_by_norm,
+            )
+            if subject_node_id is None or object_node_id is None:
                 continue
-
-            cue_start, cue_end, verb = cue
-            subject_fragment = _clean_summary_subject(clause[:cue_start])
-            object_fragment = _clean_summary_object(clause[cue_end:])
-            relation_edge_type = _summary_edge_type_for_verb(verb)
-            verb_slug = re.sub(r"[^a-z0-9]+", "_", verb.lower()).strip("_") or "relation"
-
-            # Comparative phrases usually have an explicit reference object after "as ...".
-            if verb in {"twice as many", "half as many"}:
-                comparative_match = re.search(
-                    rf"{re.escape(verb)}\s+(?P<object>[a-z0-9\s-]+?)\s+as\s+(?P<reference>.+)$",
-                    clause,
-                    flags=re.IGNORECASE,
-                )
-                if comparative_match is not None:
-                    object_fragment = _clean_summary_object(comparative_match.group("reference"))
-
-            if verb == "built" and "over time" in clause.lower():
-                object_fragment = "time"
-
-            subject_node_id = _resolve_summary_phrase_node(
-                phrase=subject_fragment,
-                fallback_node_id=previous_subject_node_id,
-                target_ref=target_ref,
-                problem=problem,
-                nodes=nodes,
-                seen_node_ids=seen_node_ids,
-                concept_by_norm=concept_by_norm,
+            predicate = triple.predicate_text.strip().lower()
+            verb_slug = re.sub(r"[^a-z0-9]+", "_", predicate).strip("_") or "relation"
+            relation_edge_type = (
+                _summary_edge_type_for_verb(predicate)
+                if triple.edge_type == ProblemGraphEdgeType.VERB_RELATION
+                else triple.edge_type
             )
-            object_node_id = _resolve_summary_phrase_node(
-                phrase=object_fragment,
-                fallback_node_id=None,
-                target_ref=target_ref,
-                problem=problem,
-                nodes=nodes,
-                seen_node_ids=seen_node_ids,
-                concept_by_norm=concept_by_norm,
+            edge_seed = (
+                f"edge_{subject_node_id}_{verb_slug}_to_{object_node_id}"
+                f"_s{triple.sentence_index if triple.sentence_index is not None else 0}"
+                f"_{triple.clause_index if triple.clause_index is not None else 0}_{triple.triple_id}"
             )
+            added = _add_summary_semantic_edge(
+                edges=edges,
+                seen_edge_ids=seen_edge_ids,
+                source_node_id=subject_node_id,
+                target_node_id=object_node_id,
+                edge_seed=edge_seed,
+                edge_type=relation_edge_type,
+                confidence=max(min(triple.confidence, 0.95), 0.2),
+                provenance=triple.provenance,
+                notes=[
+                    f"triple_id={triple.triple_id}",
+                    f"predicate={triple.predicate_text}",
+                    f"sentence_index={triple.sentence_index}",
+                    f"clause_index={triple.clause_index}",
+                ]
+                + list(triple.notes),
+            )
+            if added:
+                sentence_semantic_edges += 1
+        notes.append(f"summary_semantic_triples_used={len(triples)}")
+    else:
+        previous_subject_node_id: str | None = None
+        sentences = _split_sentences_with_offsets(problem.problem_text)
+        quantities_by_sentence: dict[int, list[QuantityAnnotation]] = {}
+        for quantity in problem.quantities:
+            sentence_index = _quantity_sentence_index(quantity, sentences)
+            if sentence_index is None:
+                continue
+            quantities_by_sentence.setdefault(sentence_index, []).append(quantity)
 
-            if subject_node_id is not None and object_node_id is not None:
-                added = _add_summary_semantic_edge(
-                    edges=edges,
-                    seen_edge_ids=seen_edge_ids,
-                    source_node_id=subject_node_id,
-                    target_node_id=object_node_id,
-                    edge_seed=f"edge_{subject_node_id}_{verb_slug}_to_{object_node_id}_s{sentence_index}_{clause_index}",
-                    edge_type=relation_edge_type,
-                    confidence=0.7,
-                    provenance=ProvenanceSource.HEURISTIC,
-                    notes=[f"verb={verb}", f"sentence_index={sentence_index}", f"clause_index={clause_index}"],
+        for sentence_index, (sentence, _, _) in enumerate(sentences):
+            clauses = _split_summary_clauses(sentence)
+            for clause_index, clause in enumerate(clauses):
+                cue = _find_summary_relation_cue(clause)
+                subject_node_id: str | None = None
+                object_node_id: str | None = None
+
+                if cue is None:
+                    continue
+
+                cue_start, cue_end, verb = cue
+                subject_fragment = _clean_summary_subject(clause[:cue_start])
+                object_fragment = _clean_summary_object(clause[cue_end:])
+                relation_edge_type = _summary_edge_type_for_verb(verb)
+                verb_slug = re.sub(r"[^a-z0-9]+", "_", verb.lower()).strip("_") or "relation"
+
+                # Comparative phrases usually have an explicit reference object after "as ...".
+                if verb in {"twice as many", "half as many"}:
+                    comparative_match = re.search(
+                        rf"{re.escape(verb)}\s+(?P<object>[a-z0-9\s-]+?)\s+as\s+(?P<reference>.+)$",
+                        clause,
+                        flags=re.IGNORECASE,
+                    )
+                    if comparative_match is not None:
+                        object_fragment = _clean_summary_object(comparative_match.group("reference"))
+
+                if verb == "built" and "over time" in clause.lower():
+                    object_fragment = "time"
+
+                subject_node_id = _resolve_summary_phrase_node(
+                    phrase=subject_fragment,
+                    fallback_node_id=previous_subject_node_id,
+                    target_ref=target_ref,
+                    problem=problem,
+                    nodes=nodes,
+                    seen_node_ids=seen_node_ids,
+                    concept_by_norm=concept_by_norm,
                 )
-                if added:
-                    sentence_semantic_edges += 1
-
-            period_relation = _extract_period_relation(clause) or _extract_period_relation(sentence)
-            if period_relation is not None and subject_node_id is not None:
-                period_phrase, period_edge_type = period_relation
-                period_node_id = _resolve_summary_phrase_node(
-                    phrase=period_phrase,
+                object_node_id = _resolve_summary_phrase_node(
+                    phrase=object_fragment,
                     fallback_node_id=None,
                     target_ref=target_ref,
                     problem=problem,
@@ -1333,62 +1428,90 @@ def build_problem_summary_graph(problem: FormalizedProblem) -> ProblemGraph:
                     seen_node_ids=seen_node_ids,
                     concept_by_norm=concept_by_norm,
                 )
-                if period_node_id is not None:
+
+                if subject_node_id is not None and object_node_id is not None:
                     added = _add_summary_semantic_edge(
                         edges=edges,
                         seen_edge_ids=seen_edge_ids,
                         source_node_id=subject_node_id,
-                        target_node_id=period_node_id,
-                        edge_seed=(
-                            f"edge_{subject_node_id}_{period_edge_type.value}_{period_node_id}"
-                            f"_s{sentence_index}_{clause_index}"
-                        ),
-                        edge_type=period_edge_type,
-                        confidence=0.69,
-                        provenance=ProvenanceSource.HEURISTIC,
-                        notes=["period_relation", f"sentence_index={sentence_index}", f"clause_index={clause_index}"],
-                    )
-                    if added:
-                        sentence_semantic_edges += 1
-
-            normalized_subject = _normalize_summary_phrase(subject_fragment)
-            if subject_node_id is not None and normalized_subject and normalized_subject not in _SUMMARY_PRONOUNS:
-                previous_subject_node_id = subject_node_id
-
-            for quantity in quantities_by_sentence.get(sentence_index, []):
-                if subject_node_id is not None:
-                    added = _add_summary_semantic_edge(
-                        edges=edges,
-                        seen_edge_ids=seen_edge_ids,
-                        source_node_id=subject_node_id,
-                        target_node_id=quantity.quantity_id,
-                        edge_seed=(
-                            f"edge_{subject_node_id}_has_quantity_{quantity.quantity_id}_s{sentence_index}_{clause_index}"
-                        ),
-                        edge_type=ProblemGraphEdgeType.HAS_ATTRIBUTE,
-                        confidence=0.66,
-                        provenance=ProvenanceSource.HEURISTIC,
-                        notes=["link=subject_quantity", f"sentence_index={sentence_index}", f"clause_index={clause_index}"],
-                    )
-                    if added:
-                        sentence_semantic_edges += 1
-
-                if object_node_id is not None:
-                    added = _add_summary_semantic_edge(
-                        edges=edges,
-                        seen_edge_ids=seen_edge_ids,
-                        source_node_id=quantity.quantity_id,
                         target_node_id=object_node_id,
-                        edge_seed=(
-                            f"edge_{quantity.quantity_id}_supports_{object_node_id}_s{sentence_index}_{clause_index}"
-                        ),
-                        edge_type=ProblemGraphEdgeType.HAS_ATTRIBUTE,
-                        confidence=0.66,
+                        edge_seed=f"edge_{subject_node_id}_{verb_slug}_to_{object_node_id}_s{sentence_index}_{clause_index}",
+                        edge_type=relation_edge_type,
+                        confidence=0.7,
                         provenance=ProvenanceSource.HEURISTIC,
-                        notes=["link=quantity_object", f"sentence_index={sentence_index}", f"clause_index={clause_index}"],
+                        notes=[f"verb={verb}", f"sentence_index={sentence_index}", f"clause_index={clause_index}"],
                     )
                     if added:
                         sentence_semantic_edges += 1
+
+                period_relation = _extract_period_relation(clause) or _extract_period_relation(sentence)
+                if period_relation is not None and subject_node_id is not None:
+                    period_phrase, period_edge_type = period_relation
+                    period_node_id = _resolve_summary_phrase_node(
+                        phrase=period_phrase,
+                        fallback_node_id=None,
+                        target_ref=target_ref,
+                        problem=problem,
+                        nodes=nodes,
+                        seen_node_ids=seen_node_ids,
+                        concept_by_norm=concept_by_norm,
+                    )
+                    if period_node_id is not None:
+                        added = _add_summary_semantic_edge(
+                            edges=edges,
+                            seen_edge_ids=seen_edge_ids,
+                            source_node_id=subject_node_id,
+                            target_node_id=period_node_id,
+                            edge_seed=(
+                                f"edge_{subject_node_id}_{period_edge_type.value}_{period_node_id}"
+                                f"_s{sentence_index}_{clause_index}"
+                            ),
+                            edge_type=period_edge_type,
+                            confidence=0.69,
+                            provenance=ProvenanceSource.HEURISTIC,
+                            notes=["period_relation", f"sentence_index={sentence_index}", f"clause_index={clause_index}"],
+                        )
+                        if added:
+                            sentence_semantic_edges += 1
+
+                normalized_subject = _normalize_summary_phrase(subject_fragment)
+                if subject_node_id is not None and normalized_subject and normalized_subject not in _SUMMARY_PRONOUNS:
+                    previous_subject_node_id = subject_node_id
+
+                for quantity in quantities_by_sentence.get(sentence_index, []):
+                    if subject_node_id is not None:
+                        added = _add_summary_semantic_edge(
+                            edges=edges,
+                            seen_edge_ids=seen_edge_ids,
+                            source_node_id=subject_node_id,
+                            target_node_id=quantity.quantity_id,
+                            edge_seed=(
+                                f"edge_{subject_node_id}_has_quantity_{quantity.quantity_id}_s{sentence_index}_{clause_index}"
+                            ),
+                            edge_type=ProblemGraphEdgeType.HAS_ATTRIBUTE,
+                            confidence=0.66,
+                            provenance=ProvenanceSource.HEURISTIC,
+                            notes=["link=subject_quantity", f"sentence_index={sentence_index}", f"clause_index={clause_index}"],
+                        )
+                        if added:
+                            sentence_semantic_edges += 1
+
+                    if object_node_id is not None:
+                        added = _add_summary_semantic_edge(
+                            edges=edges,
+                            seen_edge_ids=seen_edge_ids,
+                            source_node_id=quantity.quantity_id,
+                            target_node_id=object_node_id,
+                            edge_seed=(
+                                f"edge_{quantity.quantity_id}_supports_{object_node_id}_s{sentence_index}_{clause_index}"
+                            ),
+                            edge_type=ProblemGraphEdgeType.HAS_ATTRIBUTE,
+                            confidence=0.66,
+                            provenance=ProvenanceSource.HEURISTIC,
+                            notes=["link=quantity_object", f"sentence_index={sentence_index}", f"clause_index={clause_index}"],
+                        )
+                        if added:
+                            sentence_semantic_edges += 1
 
     if relation is not None and target_ref is not None and target_ref in seen_node_ids:
         for position, source_quantity_id in enumerate(relation.source_quantity_ids):
