@@ -7,11 +7,13 @@ from typing import Iterable, Optional
 from src.models import (
     OperationType,
     ProblemEntity,
+    ProblemGraphEdgeType,
     ProvenanceSource,
     QuantityAnnotation,
     QuantitySemanticRole,
     RelationCandidate,
     RelationType,
+    SemanticTriple,
     TargetSpec,
 )
 
@@ -125,6 +127,193 @@ _UNIT_STOPWORDS = {
     "why",
     "with",
 }
+
+_TRIPLE_SPLIT_PATTERN = re.compile(r",\s+|;\s+|\s+so\s+|\s+then\s+", re.IGNORECASE)
+_TRIPLE_PREPOSITIONS = {
+    "from",
+    "to",
+    "in",
+    "on",
+    "at",
+    "with",
+    "for",
+    "of",
+    "over",
+    "under",
+    "into",
+    "onto",
+    "through",
+    "across",
+    "within",
+    "during",
+    "as",
+    "than",
+}
+_TRIPLE_AUXILIARY = {
+    "am",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "do",
+    "does",
+    "did",
+    "has",
+    "have",
+    "had",
+    "will",
+    "would",
+    "can",
+    "could",
+    "should",
+    "may",
+    "might",
+    "must",
+}
+_TRIPLE_VERB_HINTS = {
+    "buy",
+    "bought",
+    "sell",
+    "sold",
+    "cost",
+    "costs",
+    "rise",
+    "rises",
+    "rose",
+    "consume",
+    "consumed",
+    "eat",
+    "eats",
+    "ate",
+    "build",
+    "built",
+    "receive",
+    "received",
+    "give",
+    "gave",
+    "remain",
+    "remains",
+    "left",
+    "travel",
+    "traveled",
+    "walk",
+    "walked",
+    "run",
+    "ran",
+    "increase",
+    "increased",
+    "decrease",
+    "decreased",
+    "contain",
+    "contains",
+    "share",
+    "shared",
+    "split",
+    "divide",
+    "divided",
+    "exceed",
+    "exceeds",
+}
+_TRIPLE_NUMBER_WORDS = {
+    "zero",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+    "eleven",
+    "twelve",
+    "thirteen",
+    "fourteen",
+    "fifteen",
+    "sixteen",
+    "seventeen",
+    "eighteen",
+    "nineteen",
+    "twenty",
+    "thirty",
+    "forty",
+    "fifty",
+    "sixty",
+    "seventy",
+    "eighty",
+    "ninety",
+    "hundred",
+    "thousand",
+    "million",
+    "first",
+    "second",
+    "third",
+    "fourth",
+    "fifth",
+    "sixth",
+    "seventh",
+    "eighth",
+    "ninth",
+    "tenth",
+}
+_TRIPLE_VERB_BLOCKLIST = {
+    "year",
+    "years",
+    "month",
+    "months",
+    "day",
+    "days",
+    "time",
+    "people",
+    "person",
+    "ship",
+    "ships",
+}
+_TRIPLE_WEAK_PREDICATES = {"has", "have", "had", "is", "are", "was", "were", "be", "been", "being"}
+_TRIPLE_RELATION_CUES = (
+    "twice as many",
+    "half as many",
+    "more than",
+    "less than",
+    "rises from",
+    "rises",
+    "consumed",
+    "received",
+    "bought",
+    "built",
+    "costs",
+    "ate",
+    "has",
+    "have",
+    "had",
+    "is",
+    "are",
+    "was",
+    "were",
+)
+_TRIPLE_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "as",
+    "at",
+    "for",
+    "from",
+    "in",
+    "it",
+    "of",
+    "on",
+    "or",
+    "the",
+    "to",
+    "with",
+}
+_TRIPLE_PRONOUNS = {"it", "he", "she", "they", "them", "its", "their", "his", "her"}
+_TRIPLE_CLAUSE_TRIM_MARKERS = (" because ", " which ", " who ", " that ", " then ", " so ", " but ", " to ")
 
 
 def _split_sentences(text: str) -> list[tuple[str, int, int]]:
@@ -469,3 +658,501 @@ def _dedupe_quantities(quantities: list[QuantityAnnotation]) -> tuple[list[Quant
 
     return deduped, notes
 
+
+def _looks_like_triple_verb(token: str) -> bool:
+    lowered = (token or "").lower()
+    if not lowered:
+        return False
+    if lowered in _TRIPLE_VERB_BLOCKLIST:
+        return False
+    if lowered in _TRIPLE_NUMBER_WORDS:
+        return False
+    if lowered in _TRIPLE_AUXILIARY:
+        return False
+    if lowered in _TRIPLE_VERB_HINTS:
+        return True
+    if lowered.endswith("ed") and len(lowered) >= 4:
+        return True
+    if lowered.endswith("ing") and len(lowered) >= 5:
+        return True
+    if lowered.endswith("es") and len(lowered) >= 4 and lowered not in _TRIPLE_STOPWORDS:
+        return True
+    if lowered.endswith("s") and len(lowered) >= 4 and lowered not in _TRIPLE_STOPWORDS and not lowered.endswith("ss"):
+        return True
+    return False
+
+
+def _find_triple_relation_cue(clause: str) -> tuple[int, int, str] | None:
+    lowered = (clause or "").lower()
+    best_match: tuple[tuple[int, int, int], tuple[int, int, str]] | None = None
+    for cue in sorted(_TRIPLE_RELATION_CUES, key=len, reverse=True):
+        match = re.search(rf"\b{re.escape(cue)}\b", lowered)
+        if match is None:
+            continue
+        weak_score = 1 if cue in _TRIPLE_WEAK_PREDICATES else 0
+        rank = (weak_score, match.start(), -(match.end() - match.start()))
+        candidate = (match.start(), match.end(), cue)
+        if best_match is None or rank < best_match[0]:
+            best_match = (rank, candidate)
+    if best_match is not None:
+        return best_match[1]
+
+    token_matches = list(re.finditer(r"[a-z]+(?:-[a-z]+)?", lowered))
+    for index, token_match in enumerate(token_matches):
+        token = token_match.group(0)
+        if not _looks_like_triple_verb(token):
+            continue
+        predicate = token
+        end = token_match.end()
+        if index + 1 < len(token_matches):
+            next_token = token_matches[index + 1].group(0)
+            if next_token in _TRIPLE_PREPOSITIONS:
+                predicate = f"{token} {next_token}"
+                end = token_matches[index + 1].end()
+        return token_match.start(), end, predicate
+    return None
+
+
+def _clean_triple_subject(fragment: str) -> str:
+    cleaned = (fragment or "").strip(" ,;:-")
+    if "," in cleaned:
+        cleaned = cleaned.split(",")[-1].strip()
+    lowered = cleaned.lower()
+    for marker in (" so ", " then ", " but ", " and "):
+        if marker in lowered:
+            split_at = lowered.rfind(marker)
+            cleaned = cleaned[split_at + len(marker):].strip()
+            lowered = cleaned.lower()
+    while True:
+        reduced = re.sub(r"\b(has|have|had|is|are|was|were|be|been|being)\b\s*$", "", cleaned, flags=re.IGNORECASE).strip()
+        if reduced == cleaned:
+            break
+        cleaned = reduced
+    cleaned = re.sub(r"^(so|then|but|and)\s+", "", cleaned, flags=re.IGNORECASE).strip()
+    cleaned = re.sub(r"^(over|during|in|for)\s+", "", cleaned, flags=re.IGNORECASE).strip()
+    cleaned = re.sub(r"^(a|an|the)\s+", "", cleaned, flags=re.IGNORECASE).strip()
+    return cleaned
+
+
+def _clean_triple_object(fragment: str) -> str:
+    cleaned = (fragment or "").strip(" ,;:-")
+    lowered = cleaned.lower()
+    for marker in _TRIPLE_CLAUSE_TRIM_MARKERS:
+        index = lowered.find(marker)
+        if index > 0:
+            cleaned = cleaned[:index].strip()
+            lowered = cleaned.lower()
+
+    cleaned = re.sub(
+        r"\bonce every\s+[a-z0-9\s-]+?\s+years?\b.*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip()
+    cleaned = re.sub(
+        r"\b(?:every|over|during|in|for)\s+[a-z0-9\s-]+?\s+years?\b.*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip()
+    cleaned = re.sub(r"^(from|to|in|on|at|with|for|of|over|during|as|than)\s+", "", cleaned, flags=re.IGNORECASE)
+    return cleaned.strip()
+
+
+def _normalize_concept_phrase(fragment: str) -> str:
+    tokens = re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)?", (fragment or "").lower())
+    if not tokens:
+        return ""
+
+    if "year" in tokens or "years" in tokens:
+        time_tokens: list[str] = []
+        for token in tokens:
+            if token in _TRIPLE_STOPWORDS:
+                continue
+            if token in {"year", "years"} or token in _TRIPLE_NUMBER_WORDS or token.isdigit():
+                time_tokens.append(token)
+        if time_tokens:
+            return " ".join(time_tokens[:5])
+
+    kept: list[str] = []
+    for token in tokens:
+        if token in _TRIPLE_STOPWORDS:
+            continue
+        if token in _TRIPLE_NUMBER_WORDS:
+            continue
+        if token.isdigit():
+            continue
+        kept.append(token)
+    if not kept:
+        return ""
+    return " ".join(kept[:6])
+
+
+def _extract_period_hint(clause: str) -> tuple[str, ProblemGraphEdgeType] | None:
+    every_match = re.search(r"\bevery\s+([a-z0-9\s-]+?)\s+years?\b", clause, flags=re.IGNORECASE)
+    if every_match is not None:
+        return f"{every_match.group(1).strip()} years", ProblemGraphEdgeType.OCCURS_EVERY
+
+    for pattern in (
+        r"\bover\s+([a-z0-9\s-]+?)\s+years?\b",
+        r"\bin\s+([a-z0-9\s-]+?)\s+years?\b",
+        r"\bduring\s+([a-z0-9\s-]+?)\s+years?\b",
+        r"\bfor\s+([a-z0-9\s-]+?)\s+years?\b",
+    ):
+        match = re.search(pattern, clause, flags=re.IGNORECASE)
+        if match is not None:
+            return f"{match.group(1).strip()} years", ProblemGraphEdgeType.DURING_PERIOD
+    return None
+
+
+def _triple_edge_type(predicate: str) -> ProblemGraphEdgeType:
+    normalized = (predicate or "").lower()
+    if (normalized.startswith("rise") or normalized.startswith("rose")) and "from" in normalized:
+        return ProblemGraphEdgeType.RISE_FROM
+    if normalized.startswith("consume"):
+        return ProblemGraphEdgeType.CONSUME
+    if normalized in {"eat", "eats", "ate"}:
+        return ProblemGraphEdgeType.ATE
+    if normalized.startswith("build") or normalized == "built":
+        return ProblemGraphEdgeType.BUILT_OVER_TIME
+    if any(cue in normalized for cue in ("twice", "half", "double", "triple", "more than", "less than", "times")):
+        return ProblemGraphEdgeType.MULTIPLIER_OF
+    if normalized in {"has", "have", "had", "contains", "contain", "includes", "include"}:
+        return ProblemGraphEdgeType.HAS_ATTRIBUTE
+    return ProblemGraphEdgeType.VERB_RELATION
+
+
+def _quantity_ids_by_sentence(
+    quantities: list[QuantityAnnotation],
+    sentences: list[tuple[str, int, int]],
+) -> dict[int, list[QuantityAnnotation]]:
+    grouped: dict[int, list[QuantityAnnotation]] = {}
+    for quantity in quantities:
+        sentence_index: int | None = quantity.sentence_index
+        if sentence_index is None and quantity.char_start is not None:
+            for idx, (_, start, end) in enumerate(sentences):
+                if start <= quantity.char_start < end:
+                    sentence_index = idx
+                    break
+        if sentence_index is None:
+            continue
+        grouped.setdefault(sentence_index, []).append(quantity)
+    return grouped
+
+
+def _resolve_triple_node_id(
+    *,
+    phrase: str,
+    target: Optional[TargetSpec],
+    entities: list[ProblemEntity],
+    concept_ids_by_norm: dict[str, str],
+    concept_labels_by_id: dict[str, str],
+    used_node_ids: set[str],
+    fallback_node_id: str | None = None,
+) -> str | None:
+    cleaned = (phrase or "").strip()
+    lowered = cleaned.lower()
+    if not cleaned:
+        return fallback_node_id
+
+    if target is not None and any(cue in lowered for cue in ("how many", "how much", "what", "which", "who")):
+        return target.target_variable
+
+    if lowered in _TRIPLE_PRONOUNS and fallback_node_id is not None:
+        return fallback_node_id
+
+    for entity in entities:
+        entity_lower = entity.surface_text.lower()
+        if lowered == entity_lower or entity_lower in lowered or lowered in entity_lower:
+            return entity.entity_id
+
+    normalized = _normalize_concept_phrase(cleaned)
+    if not normalized:
+        return fallback_node_id
+
+    existing = concept_ids_by_norm.get(normalized)
+    if existing is not None:
+        return existing
+
+    base_node_id = f"concept_{_slugify(normalized, fallback='node')}"
+    node_id = base_node_id
+    suffix = 2
+    while node_id in used_node_ids:
+        node_id = f"{base_node_id}_{suffix}"
+        suffix += 1
+
+    concept_ids_by_norm[normalized] = node_id
+    concept_labels_by_id[node_id] = normalized
+    used_node_ids.add(node_id)
+    return node_id
+
+
+def _node_label_from_id(
+    node_id: str,
+    *,
+    target: Optional[TargetSpec],
+    quantities_by_id: dict[str, QuantityAnnotation],
+    entities_by_id: dict[str, ProblemEntity],
+    concept_labels_by_id: dict[str, str],
+) -> str:
+    if target is not None and node_id == target.target_variable:
+        return target.surface_text
+    if node_id in quantities_by_id:
+        return quantities_by_id[node_id].surface_text
+    if node_id in entities_by_id:
+        return entities_by_id[node_id].surface_text
+    if node_id in concept_labels_by_id:
+        return concept_labels_by_id[node_id]
+    if node_id.startswith("concept_"):
+        return node_id[len("concept_"):].replace("_", " ")
+    return node_id
+
+
+def _add_semantic_triple(
+    triples: list[SemanticTriple],
+    seen_keys: set[tuple[str, str, str, int | None, int | None]],
+    *,
+    triple_id: str,
+    subject_node_id: str,
+    predicate_text: str,
+    object_node_id: str,
+    subject_text: str,
+    object_text: str,
+    sentence_index: int | None,
+    clause_index: int | None,
+    edge_type: ProblemGraphEdgeType,
+    confidence: float,
+    notes: list[str],
+) -> bool:
+    predicate = predicate_text.strip().lower()
+    key = (subject_node_id, predicate, object_node_id, sentence_index, clause_index)
+    if key in seen_keys:
+        return False
+    seen_keys.add(key)
+    triples.append(
+        SemanticTriple(
+            triple_id=triple_id,
+            subject_text=subject_text,
+            predicate_text=predicate_text.strip(),
+            object_text=object_text,
+            subject_node_id=subject_node_id,
+            object_node_id=object_node_id,
+            edge_type=edge_type,
+            sentence_index=sentence_index,
+            clause_index=clause_index,
+            confidence=confidence,
+            provenance=ProvenanceSource.HEURISTIC,
+            notes=notes,
+        )
+    )
+    return True
+
+
+def _extract_semantic_triples(
+    problem_text: str,
+    target: Optional[TargetSpec],
+    entities: list[ProblemEntity],
+    quantities: list[QuantityAnnotation],
+) -> list[SemanticTriple]:
+    if not (problem_text or "").strip():
+        return []
+
+    sentences = _split_sentences(problem_text)
+    quantities_per_sentence = _quantity_ids_by_sentence(quantities, sentences)
+    quantities_by_id = {quantity.quantity_id: quantity for quantity in quantities}
+    entities_by_id = {entity.entity_id: entity for entity in entities}
+
+    triples: list[SemanticTriple] = []
+    seen_keys: set[tuple[str, str, str, int | None, int | None]] = set()
+    triple_counter = 1
+
+    used_node_ids: set[str] = set(quantities_by_id)
+    used_node_ids.update(entities_by_id)
+    if target is not None:
+        used_node_ids.add(target.target_variable)
+
+    concept_ids_by_norm: dict[str, str] = {}
+    concept_labels_by_id: dict[str, str] = {}
+    previous_subject_node_id: str | None = None
+
+    for sentence_index, (sentence, _, _) in enumerate(sentences):
+        clauses = [part.strip() for part in _TRIPLE_SPLIT_PATTERN.split(sentence) if part.strip()] or [sentence]
+        for clause_index, clause in enumerate(clauses):
+            cue = _find_triple_relation_cue(clause)
+            subject_node_id: str | None = None
+            object_node_id: str | None = None
+
+            if cue is not None:
+                cue_start, cue_end, predicate = cue
+                subject_fragment = _clean_triple_subject(clause[:cue_start])
+                object_fragment = _clean_triple_object(clause[cue_end:])
+
+                if predicate in {"twice as many", "half as many"}:
+                    comparative_match = re.search(
+                        rf"{re.escape(predicate)}\s+(?P<object>[a-z0-9\s-]+?)\s+as\s+(?P<reference>.+)$",
+                        clause,
+                        flags=re.IGNORECASE,
+                    )
+                    if comparative_match is not None:
+                        object_fragment = _clean_triple_object(comparative_match.group("reference"))
+
+                subject_node_id = _resolve_triple_node_id(
+                    phrase=subject_fragment,
+                    target=target,
+                    entities=entities,
+                    concept_ids_by_norm=concept_ids_by_norm,
+                    concept_labels_by_id=concept_labels_by_id,
+                    used_node_ids=used_node_ids,
+                    fallback_node_id=previous_subject_node_id,
+                )
+                object_node_id = _resolve_triple_node_id(
+                    phrase=object_fragment,
+                    target=target,
+                    entities=entities,
+                    concept_ids_by_norm=concept_ids_by_norm,
+                    concept_labels_by_id=concept_labels_by_id,
+                    used_node_ids=used_node_ids,
+                )
+
+                if subject_node_id is not None and object_node_id is not None and subject_node_id != object_node_id:
+                    subject_label = _node_label_from_id(
+                        subject_node_id,
+                        target=target,
+                        quantities_by_id=quantities_by_id,
+                        entities_by_id=entities_by_id,
+                        concept_labels_by_id=concept_labels_by_id,
+                    )
+                    object_label = _node_label_from_id(
+                        object_node_id,
+                        target=target,
+                        quantities_by_id=quantities_by_id,
+                        entities_by_id=entities_by_id,
+                        concept_labels_by_id=concept_labels_by_id,
+                    )
+                    added = _add_semantic_triple(
+                        triples,
+                        seen_keys,
+                        triple_id=f"triple_{triple_counter}",
+                        subject_node_id=subject_node_id,
+                        predicate_text=predicate,
+                        object_node_id=object_node_id,
+                        subject_text=subject_label,
+                        object_text=object_label,
+                        sentence_index=sentence_index,
+                        clause_index=clause_index,
+                        edge_type=_triple_edge_type(predicate),
+                        confidence=0.7,
+                        notes=[f"clause={clause.strip()}"],
+                    )
+                    if added:
+                        triple_counter += 1
+
+                normalized_subject = _normalize_concept_phrase(subject_fragment)
+                if (
+                    subject_node_id is not None
+                    and normalized_subject
+                    and normalized_subject not in _TRIPLE_PRONOUNS
+                ):
+                    previous_subject_node_id = subject_node_id
+
+            period_hint = _extract_period_hint(clause)
+            period_subject_node_id = subject_node_id or previous_subject_node_id
+            if period_hint is not None and period_subject_node_id is not None:
+                period_text, period_edge_type = period_hint
+                period_node_id = _resolve_triple_node_id(
+                    phrase=period_text,
+                    target=target,
+                    entities=entities,
+                    concept_ids_by_norm=concept_ids_by_norm,
+                    concept_labels_by_id=concept_labels_by_id,
+                    used_node_ids=used_node_ids,
+                )
+                if period_node_id is not None and period_node_id != period_subject_node_id:
+                    subject_label = _node_label_from_id(
+                        period_subject_node_id,
+                        target=target,
+                        quantities_by_id=quantities_by_id,
+                        entities_by_id=entities_by_id,
+                        concept_labels_by_id=concept_labels_by_id,
+                    )
+                    period_label = _node_label_from_id(
+                        period_node_id,
+                        target=target,
+                        quantities_by_id=quantities_by_id,
+                        entities_by_id=entities_by_id,
+                        concept_labels_by_id=concept_labels_by_id,
+                    )
+                    predicate = "occurs every" if period_edge_type == ProblemGraphEdgeType.OCCURS_EVERY else "during"
+                    added = _add_semantic_triple(
+                        triples,
+                        seen_keys,
+                        triple_id=f"triple_{triple_counter}",
+                        subject_node_id=period_subject_node_id,
+                        predicate_text=predicate,
+                        object_node_id=period_node_id,
+                        subject_text=subject_label,
+                        object_text=period_label,
+                        sentence_index=sentence_index,
+                        clause_index=clause_index,
+                        edge_type=period_edge_type,
+                        confidence=0.69,
+                        notes=["period_relation"],
+                    )
+                    if added:
+                        triple_counter += 1
+
+            sentence_quantities = quantities_per_sentence.get(sentence_index, [])
+            for quantity in sentence_quantities:
+                if subject_node_id is not None and subject_node_id != quantity.quantity_id:
+                    subject_label = _node_label_from_id(
+                        subject_node_id,
+                        target=target,
+                        quantities_by_id=quantities_by_id,
+                        entities_by_id=entities_by_id,
+                        concept_labels_by_id=concept_labels_by_id,
+                    )
+                    added = _add_semantic_triple(
+                        triples,
+                        seen_keys,
+                        triple_id=f"triple_{triple_counter}",
+                        subject_node_id=subject_node_id,
+                        predicate_text="has quantity",
+                        object_node_id=quantity.quantity_id,
+                        subject_text=subject_label,
+                        object_text=quantity.surface_text,
+                        sentence_index=sentence_index,
+                        clause_index=clause_index,
+                        edge_type=ProblemGraphEdgeType.HAS_ATTRIBUTE,
+                        confidence=0.66,
+                        notes=["link=subject_quantity"],
+                    )
+                    if added:
+                        triple_counter += 1
+
+                if object_node_id is not None and object_node_id != quantity.quantity_id:
+                    object_label = _node_label_from_id(
+                        object_node_id,
+                        target=target,
+                        quantities_by_id=quantities_by_id,
+                        entities_by_id=entities_by_id,
+                        concept_labels_by_id=concept_labels_by_id,
+                    )
+                    added = _add_semantic_triple(
+                        triples,
+                        seen_keys,
+                        triple_id=f"triple_{triple_counter}",
+                        subject_node_id=quantity.quantity_id,
+                        predicate_text="supports",
+                        object_node_id=object_node_id,
+                        subject_text=quantity.surface_text,
+                        object_text=object_label,
+                        sentence_index=sentence_index,
+                        clause_index=clause_index,
+                        edge_type=ProblemGraphEdgeType.HAS_ATTRIBUTE,
+                        confidence=0.66,
+                        notes=["link=quantity_object"],
+                    )
+                    if added:
+                        triple_counter += 1
+
+    return triples

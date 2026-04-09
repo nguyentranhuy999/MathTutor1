@@ -150,6 +150,37 @@ class RelationCandidate(BaseModel):
         return self
 
 
+class SemanticTriple(BaseModel):
+    triple_id: str
+    subject_text: str
+    predicate_text: str
+    object_text: Optional[str] = Field(default=None)
+    subject_node_id: Optional[str] = Field(default=None)
+    object_node_id: Optional[str] = Field(default=None)
+    edge_type: ProblemGraphEdgeType = Field(default=ProblemGraphEdgeType.VERB_RELATION)
+    sentence_index: Optional[int] = Field(default=None, ge=0)
+    clause_index: Optional[int] = Field(default=None, ge=0)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    provenance: ProvenanceSource = Field(default=ProvenanceSource.UNKNOWN)
+    notes: List[str] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def validate_triple_shape(self):
+        if not self.triple_id.strip():
+            raise ValueError("triple_id must not be empty")
+        if not self.subject_text.strip():
+            raise ValueError("SemanticTriple.subject_text must not be empty")
+        if not self.predicate_text.strip():
+            raise ValueError("SemanticTriple.predicate_text must not be empty")
+        if self.subject_node_id is not None and not self.subject_node_id.strip():
+            raise ValueError("SemanticTriple.subject_node_id must not be empty when provided")
+        if self.object_node_id is not None and not self.object_node_id.strip():
+            raise ValueError("SemanticTriple.object_node_id must not be empty when provided")
+        return self
+
+
 class ProblemGraphNode(BaseModel):
     node_id: str
     node_type: ProblemGraphNodeType
@@ -247,6 +278,7 @@ class FormalizedProblem(BaseModel):
     entities: List[ProblemEntity] = Field(default_factory=list)
     target: Optional[TargetSpec] = Field(default=None)
     relation_candidates: List[RelationCandidate] = Field(default_factory=list)
+    semantic_triples: List[SemanticTriple] = Field(default_factory=list)
     problem_summary_graph: Optional[ProblemGraph] = Field(default=None)
     problem_graph: Optional[ProblemGraph] = Field(default=None)
     assumptions: List[str] = Field(default_factory=list)
@@ -290,6 +322,28 @@ class FormalizedProblem(BaseModel):
                 )
             if relation.target_variable is not None and not relation.target_variable.strip():
                 raise ValueError("RelationCandidate.target_variable must not be empty when provided")
+
+        triple_ids = [triple.triple_id for triple in self.semantic_triples]
+        if len(triple_ids) != len(set(triple_ids)):
+            raise ValueError("FormalizedProblem contains duplicate triple_id values")
+
+        known_node_ids = set(quantity_ids)
+        known_node_ids.update(entity_ids)
+        if self.target is not None:
+            known_node_ids.add(self.target.target_variable)
+
+        for triple in self.semantic_triples:
+            if triple.subject_node_id is not None and triple.subject_node_id not in known_node_ids:
+                # concept_* nodes are allowed to be created later when building summary graph.
+                if not triple.subject_node_id.startswith("concept_"):
+                    raise ValueError(
+                        f"SemanticTriple '{triple.triple_id}' references unknown subject_node_id '{triple.subject_node_id}'"
+                    )
+            if triple.object_node_id is not None and triple.object_node_id not in known_node_ids:
+                if not triple.object_node_id.startswith("concept_"):
+                    raise ValueError(
+                        f"SemanticTriple '{triple.triple_id}' references unknown object_node_id '{triple.object_node_id}'"
+                    )
 
         def _validate_graph_refs(graph: ProblemGraph, graph_label: str) -> None:
             if self.target is not None and graph.target_node_id is not None:

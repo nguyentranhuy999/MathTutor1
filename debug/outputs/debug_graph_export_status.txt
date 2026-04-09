@@ -2,6 +2,6 @@ Debug Graph Export Status
 problem_text=A deep-sea monster rises from the waters once every hundred years to feast on a ship and sate its hunger. Over three hundred years, it has consumed 847 people. Ships have been built larger over tim...
 student_answer=Let's say the first ship had x people. The second ship had 2x people. The third ship had 4x people. The total number of people consumed is 847, which means: x + 2x + 4x = 847 7x = 847 x = 121 There...
 problem_graph=ok (nodes=7, edges=7, target=how_many_people_were_on_the_ship_the_monster_ate_in_the_first_hundred_years)
-problem_summary_graph=ok (nodes=13, edges=12, target=how_many_people_were_on_the_ship_the_monster_ate_in_the_first_hundred_years)
+problem_summary_graph=ok (nodes=11, edges=10, target=how_many_people_were_on_the_ship_the_monster_ate_in_the_first_hundred_years)
 reference_graph=ok (nodes=7, edges=7, target=how_many_people_were_on_the_ship_the_monster_ate_in_the_first_hundred_years), final_answer=121
 student_graph=ok (nodes=17, edges=11, target=student_final_answer)
