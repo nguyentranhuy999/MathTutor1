@@ -515,4 +515,3 @@ README này phản ánh trạng thái hiện tại của dự án theo kiến tr
 Nếu bạn cần tài liệu giải thích cơ chế chi tiết hơn từng mô-đun, xem thêm:
 
 - `PIPELINE_MECHANISM.md`
-- 11
